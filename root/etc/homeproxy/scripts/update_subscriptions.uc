@@ -80,6 +80,139 @@ function log(...args) {
 	logfile.close();
 }
 
+const shadowsocks_encrypt_methods = [
+	'none',
+	'aes-128-gcm',
+	'aes-192-gcm',
+	'aes-256-gcm',
+	'chacha20-ietf-poly1305',
+	'xchacha20-ietf-poly1305',
+	'2022-blake3-aes-128-gcm',
+	'2022-blake3-aes-256-gcm',
+	'2022-blake3-chacha20-poly1305',
+	'aes-128-ctr',
+	'aes-192-ctr',
+	'aes-256-ctr',
+	'aes-128-cfb',
+	'aes-192-cfb',
+	'aes-256-cfb',
+	'chacha20',
+	'chacha20-ietf',
+	'rc4-md5'
+];
+
+function valid_shadowsocks_config(config) {
+	if (type(config) !== 'object' || isEmpty(config.address) || isEmpty(config.port) ||
+	    isEmpty(config.shadowsocks_encrypt_method))
+		return false;
+
+	if (!~index(shadowsocks_encrypt_methods, config.shadowsocks_encrypt_method))
+		return false;
+
+	if (config.shadowsocks_encrypt_method !== 'none' && isEmpty(config.password))
+		return false;
+
+	return true;
+}
+
+function parse_shadowsocks_legacy_uri(uri, label) {
+	if (type(uri) !== 'string')
+		return null;
+
+	uri = trim(uri);
+
+	const parts = split(uri, '@');
+	if (!parts || length(parts) < 2)
+		return null;
+
+	let userinfo = parts[0];
+	if (length(parts) > 2) {
+		userinfo = '';
+		for (let i = 0; i < length(parts) - 1; i++)
+			userinfo = userinfo + (i ? '@' : '') + parts[i];
+	}
+
+	let server = {};
+	replace(parts[length(parts)-1], /^\[?(.+?)\]?:(\d+)$/, (_, address, port) => {
+		server.address = replace(address, /^\[(.*)\]$/, (_, address) => address);
+		server.port = port;
+		return '';
+	});
+
+	if (type(userinfo) !== 'string')
+		return null;
+
+	userinfo = split(userinfo, ':', 2);
+	const config = {
+		label: label,
+		type: 'shadowsocks',
+		address: server.address,
+		port: server.port,
+		shadowsocks_encrypt_method: userinfo[0],
+		password: userinfo[1]
+	};
+
+	return valid_shadowsocks_config(config) ? config : null;
+}
+
+function parse_shadowsocks_uri(uri) {
+	if (type(uri) !== 'string')
+		return null;
+
+	const ss_suri = split(uri, '#');
+	let ss_label = null,
+	    ss_slabel = '';
+	if (length(ss_suri) <= 2) {
+		if (length(ss_suri) === 2) {
+			ss_label = urldecode(ss_suri[1]);
+			ss_slabel = '#' + urlencode(ss_suri[1]);
+		}
+
+		const decoded = decodeBase64Str(ss_suri[0]);
+		if (decoded)
+			uri = trim(decoded) + ss_slabel;
+	}
+
+	let url = parseURL('http://' + uri) || {},
+	    ss_userinfo = {},
+	    ss_plugin,
+	    ss_plugin_opts;
+	if (url.username && url.password)
+		/* User info encoded with URIComponent */
+		ss_userinfo = [url.username, urldecode(url.password)];
+	else if (url.username) {
+		/* User info encoded with base64 */
+		const decoded_userinfo = decodeBase64Str(urldecode(url.username));
+		if (decoded_userinfo)
+			ss_userinfo = split(sprintf('%s', decoded_userinfo), ':', 2);
+	}
+
+	if (url.search && type(url.searchParams.plugin) === 'string') {
+		const ss_plugin_info = split(url.searchParams.plugin, ';', 2);
+		const ss_plugin_name = sprintf('%s', ss_plugin_info[0] || '');
+		if (ss_plugin_name)
+			ss_plugin = (ss_plugin_name === 'simple-obfs') ? 'obfs-local' : ss_plugin_name;
+		ss_plugin_opts = ss_plugin_info[1];
+	}
+
+	let config = {
+		label: url.hash ? urldecode(url.hash) : ss_label,
+		type: 'shadowsocks',
+		address: url.hostname,
+		port: url.port,
+		shadowsocks_encrypt_method: ss_userinfo[0],
+		password: ss_userinfo[1],
+		shadowsocks_plugin: ss_plugin,
+		shadowsocks_plugin_opts: ss_plugin_opts
+	};
+
+	if (valid_shadowsocks_config(config))
+		return config;
+
+	/* Legacy format https://github.com/shadowsocks/shadowsocks-org/commit/78ca46cd6859a4e9475953ed34a2d301454f579e */
+	return parse_shadowsocks_legacy_uri(split(uri, '#')[0], ss_label);
+}
+
 function parse_uri(uri) {
 	let config, url, params;
 
@@ -211,50 +344,7 @@ function parse_uri(uri) {
 
 			break;
 		case 'ss':
-			/* "Lovely" Shadowrocket format */
-			const ss_suri = split(uri[1], '#');
-			let ss_slabel = '';
-			if (length(ss_suri) <= 2) {
-				if (length(ss_suri) === 2)
-					ss_slabel = '#' + urlencode(ss_suri[1]);
-				if (decodeBase64Str(ss_suri[0]))
-					uri[1] = decodeBase64Str(ss_suri[0]) + ss_slabel;
-			}
-
-			/* Legacy format is not supported, it should be never appeared in modern subscriptions */
-			/* https://github.com/shadowsocks/shadowsocks-org/commit/78ca46cd6859a4e9475953ed34a2d301454f579e */
-
-			/* SIP002 format https://shadowsocks.org/guide/sip002.html */
-			url = parseURL('http://' + uri[1]) || {};
-
-			let ss_userinfo = {};
-			if (url.username && url.password)
-				/* User info encoded with URIComponent */
-				ss_userinfo = [url.username, urldecode(url.password)];
-			else if (url.username)
-				/* User info encoded with base64 */
-				ss_userinfo = split(decodeBase64Str(urldecode(url.username)), ':', 2);
-
-			let ss_plugin, ss_plugin_opts;
-			if (url.search && url.searchParams.plugin) {
-				const ss_plugin_info = split(url.searchParams.plugin, ';', 2);
-				ss_plugin = ss_plugin_info[0];
-				if (ss_plugin === 'simple-obfs')
-					/* Fix non-standard plugin name */
-					ss_plugin = 'obfs-local';
-				ss_plugin_opts = ss_plugin_info[1];
-			}
-
-			config = {
-				label: url.hash ? urldecode(url.hash) : null,
-				type: 'shadowsocks',
-				address: url.hostname,
-				port: url.port,
-				shadowsocks_encrypt_method: ss_userinfo[0],
-				password: ss_userinfo[1],
-				shadowsocks_plugin: ss_plugin,
-				shadowsocks_plugin_opts: ss_plugin_opts
-			};
+			config = parse_shadowsocks_uri(uri[1]);
 
 			break;
 		case 'trojan':
