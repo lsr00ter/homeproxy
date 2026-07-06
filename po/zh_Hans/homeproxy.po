@@ -2309,9 +2309,9 @@ msgstr ""
 msgid "String"
 msgstr "字符串"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1322
-msgid "Sub (%s)"
-msgstr "订阅（%s）"
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1337
+msgid "Subscription nodes"
+msgstr "订阅节点"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1349
 msgid "Subscription URL-s"

@@ -2267,8 +2267,8 @@ msgstr ""
 msgid "String"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1322
-msgid "Sub (%s)"
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1337
+msgid "Subscription nodes"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1349

@@ -1334,7 +1334,7 @@ return view.extend({
 
 		/* Subscription nodes start */
 		if (Object.keys(subinfo).length > 0) {
-			s.tab('sub_node', _('Sub (%s)').format(_('Subscriptions')));
+			s.tab('sub_node', _('Subscription nodes'));
 			o = s.taboption('sub_node', form.SectionValue, '_sub_node', form.GridSection, 'node');
 			ss = renderNodeSettings(o.subsection, data, features, main_node, routing_mode);
 			ss.filter = function(section_id) {
