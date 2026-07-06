@@ -88,14 +88,18 @@ return view.extend({
 		    hosts = data[2]?.hosts;
 
 		/* Cache all configured proxy nodes, they will be called multiple times */
+		let subinfo = hp.loadSubscriptionInfo(data[0]);
 		let proxy_nodes = {};
 		uci.sections(data[0], 'node', (res) => {
 			let nodeaddr = ((res.type === 'direct') ? res.override_address : res.address) || '',
 			    nodeport = ((res.type === 'direct') ? res.override_port : res.port) || '';
 
-			proxy_nodes[res['.name']] =
-				String.format('[%s] %s', res.type, res.label || ((stubValidator.apply('ip6addr', nodeaddr) ?
-					String.format('[%s]', nodeaddr) : nodeaddr) + ':' + nodeport));
+			let label = res.label || ((stubValidator.apply('ip6addr', nodeaddr) ?
+				String.format('[%s]', nodeaddr) : nodeaddr) + ':' + nodeport);
+			if (res.grouphash && subinfo[res.grouphash])
+				label = '%s / %s'.format(subinfo[res.grouphash], label);
+
+			proxy_nodes[res['.name']] = String.format('[%s] %s', res.type, label);
 		});
 
 		m = new form.Map('homeproxy', _('HomeProxy'),

@@ -1219,13 +1219,7 @@ return view.extend({
 		let features = data[1];
 
 		/* Cache subscription information, it will be called multiple times */
-		let subinfo = {};
-		for (let suburl of (uci.get(data[0], 'subscription', 'subscription_url') || [])) {
-			const url = new URL(suburl);
-			const urlhash = hp.calcStringMD5(suburl.replace(/#.*$/, ''));
-			const title = url.hash ? decodeURIComponent(url.hash.slice(1)) : url.hostname;
-			subinfo[urlhash] = title;
-		}
+		let subinfo = hp.loadSubscriptionInfo(data[0]);
 
 		m = new form.Map('homeproxy', _('Edit nodes'));
 

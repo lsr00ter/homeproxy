@@ -217,6 +217,20 @@ return baseclass.extend({
 		}
 	},
 
+	/* Map subscription grouphash -> display name, used to prefix
+	 * subscription node labels. The grouphash matches the value stored
+	 * on each imported node and update_subscriptions.uc (md5 of the
+	 * subscription URL without its #fragment). */
+	loadSubscriptionInfo(uciconfig) {
+		let subinfo = {};
+		for (let suburl of (uci.get(uciconfig, 'subscription', 'subscription_url') || [])) {
+			const url = new URL(suburl);
+			const urlhash = this.calcStringMD5(suburl.replace(/#.*$/, ''));
+			subinfo[urlhash] = url.hash ? decodeURIComponent(url.hash.slice(1)) : url.hostname;
+		}
+		return subinfo;
+	},
+
 	loadModalTitle(title, addtitle, uciconfig, ucisection) {
 		let label = uci.get(uciconfig, ucisection, 'label');
 		return label ? title + ' » ' + label : addtitle;
