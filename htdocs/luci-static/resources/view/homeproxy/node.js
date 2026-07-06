@@ -14,6 +14,25 @@
 'require homeproxy as hp';
 'require tools.widgets as widgets';
 
+/* Keep long node labels/addresses from breaking the grid layout on
+ * desktop and mobile. Long labels wrap instead of collapsing early,
+ * and long unbreakable hostnames wrap instead of overflowing. */
+const css = '										\
+.cbi-section-table td.cbi-section-table-titles {					\
+	min-width: 10em;								\
+	overflow-wrap: break-word;							\
+	overflow-wrap: anywhere;							\
+}											\
+.cbi-section-table td.cbi-value-field[data-name="address"] {				\
+	max-width: 16em;								\
+	overflow-wrap: break-word;							\
+	overflow-wrap: anywhere;							\
+}											\
+@media screen and (max-width: 600px) {							\
+	.cbi-section-table td.cbi-section-table-titles { min-width: 7em; }		\
+	.cbi-section-table td.cbi-value-field[data-name="address"] { max-width: 10em; }	\
+}';
+
 function allowInsecureConfirm(ev, _section_id, value) {
 	if (value === '1' && !confirm(_('Are you sure to allow insecure?')))
 		ev.target.firstElementChild.checked = null;
@@ -1461,6 +1480,6 @@ return view.extend({
 		}
 		/* Subscriptions settings end */
 
-		return m.render();
+		return m.render().then((node) => E([ E('style', [ css ]), node ]));
 	}
 });
