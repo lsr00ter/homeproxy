@@ -84,6 +84,23 @@ cleanup_client_takeover() {
 	/etc/init.d/dnsmasq restart >"/dev/null" 2>&1
 }
 
+cleanup_tun_device() {
+	config_load "$CONF"
+
+	local tun_name
+	config_get tun_name "infra" "tun_name" "singtun0"
+
+	ip link set "$tun_name" down 2>"/dev/null"
+	ip tuntap del mode tun name "$tun_name" 2>"/dev/null"
+}
+
+cleanup_start_failure() {
+	cleanup_auto_update
+	cleanup_client_takeover
+	procd_kill "$CONF" >"/dev/null" 2>&1
+	cleanup_tun_device
+}
+
 setup_client_dnsmasq() {
 	config_load "$CONF"
 
@@ -141,12 +158,16 @@ setup_client_routing() {
 			local tproxy_mark
 			config_get tproxy_mark "infra" "tproxy_mark" "101"
 
-			ip rule add fwmark "$tproxy_mark" table "$table_mark"
-			ip route add local 0.0.0.0/0 dev lo table "$table_mark"
+			ip route del local 0.0.0.0/0 dev lo table "$table_mark" 2>"/dev/null"
+			ip route add local 0.0.0.0/0 dev lo table "$table_mark" || return 1
+			ip rule del fwmark "$tproxy_mark" table "$table_mark" 2>"/dev/null"
+			ip rule add fwmark "$tproxy_mark" table "$table_mark" || return 1
 
 			if [ "$ipv6_support" -eq "1" ]; then
-				ip -6 rule add fwmark "$tproxy_mark" table "$table_mark"
-				ip -6 route add local ::/0 dev lo table "$table_mark"
+				ip -6 route del local ::/0 dev lo table "$table_mark" 2>"/dev/null"
+				ip -6 route add local ::/0 dev lo table "$table_mark" || return 1
+				ip -6 rule del fwmark "$tproxy_mark" table "$table_mark" 2>"/dev/null"
+				ip -6 rule add fwmark "$tproxy_mark" table "$table_mark" || return 1
 			fi
 		fi
 		;;
@@ -155,15 +176,20 @@ setup_client_routing() {
 		config_get tun_name "infra" "tun_name" "singtun0"
 		config_get tun_mark "infra" "tun_mark" "102"
 
-		ip tuntap add mode tun user root name "$tun_name"
+		ip tuntap add mode tun user root name "$tun_name" 2>"/dev/null" || \
+			ip link show "$tun_name" >"/dev/null" 2>&1 || return 1
 		sleep 1s
-		ip link set "$tun_name" up
+		ip link set "$tun_name" up || return 1
 
-		ip route replace default dev "$tun_name" table "$table_mark"
-		ip rule add fwmark "$tun_mark" lookup "$table_mark"
+		ip route replace default dev "$tun_name" table "$table_mark" || return 1
+		ip rule del fwmark "$tun_mark" table "$table_mark" 2>"/dev/null"
+		ip rule add fwmark "$tun_mark" lookup "$table_mark" || return 1
 
-		ip -6 route replace default dev "$tun_name" table "$table_mark"
-		ip -6 rule add fwmark "$tun_mark" lookup "$table_mark"
+		if [ "$ipv6_support" -eq "1" ]; then
+			ip -6 route replace default dev "$tun_name" table "$table_mark" || return 1
+			ip -6 rule del fwmark "$tun_mark" table "$table_mark" 2>"/dev/null"
+			ip -6 rule add fwmark "$tun_mark" lookup "$table_mark" || return 1
+		fi
 		;;
 	esac
 }
@@ -365,38 +391,37 @@ service_started() {
 	if [ "$outbound_node" != "nil" ]; then
 		if ! wait_client_ready; then
 			log "Error: sing-box client is not ready."
-			cleanup_auto_update
-			cleanup_client_takeover
+			cleanup_start_failure
 			return 1
 		fi
 
 		if ! setup_client_dnsmasq; then
 			log "Error: failed to setup DNSMasq rules."
-			cleanup_auto_update
-			cleanup_client_takeover
+			cleanup_start_failure
 			return 1
 		fi
 
-		setup_client_routing
+		if ! setup_client_routing; then
+			log "Error: failed to setup routing rules."
+			cleanup_start_failure
+			return 1
+		fi
 	fi
 
 	# Setup firewall
 	if ! ucode "$HP_DIR/scripts/firewall_pre.uc"; then
 		log "Error: failed to generate pre-firewall rules."
-		cleanup_auto_update
-		cleanup_client_takeover
+		cleanup_start_failure
 		return 1
 	fi
 	if [ "$outbound_node" != "nil" ] && ! utpl -S "$HP_DIR/scripts/firewall_post.ut" > "$RUN_DIR/fw4_post.nft"; then
 		log "Error: failed to generate post-firewall rules."
-		cleanup_auto_update
-		cleanup_client_takeover
+		cleanup_start_failure
 		return 1
 	fi
 	if ! fw4 reload >"/dev/null" 2>&1; then
 		log "Error: failed to reload firewall."
-		cleanup_auto_update
-		cleanup_client_takeover
+		cleanup_start_failure
 		return 1
 	fi
 
@@ -414,14 +439,7 @@ stop_service() {
 }
 
 service_stopped() {
-	# Load config
-	config_load "$CONF"
-	local tun_name
-	config_get tun_name "infra" "tun_name" "singtun0"
-
-	# TUN
-	ip link set "$tun_name" down 2>"/dev/null"
-	ip tuntap del mode tun name "$tun_name" 2>"/dev/null"
+	cleanup_tun_device
 }
 
 reload_service() {
