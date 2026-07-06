@@ -63,6 +63,23 @@ let main_node, main_udp_node, dedicated_udp_node, default_outbound, default_outb
 if (routing_mode !== 'custom') {
 	main_node = uci.get(uciconfig, ucimain, 'main_node') || 'nil';
 	main_udp_node = uci.get(uciconfig, ucimain, 'main_udp_node') || 'nil';
+	let node_changed = false;
+
+	if (!isEmpty(main_node) && main_node !== 'urltest' && !uci.get(uciconfig, main_node)) {
+		uci.set(uciconfig, ucimain, 'main_node', 'nil');
+		main_node = 'nil';
+		node_changed = true;
+	}
+
+	if (!isEmpty(main_udp_node) && !(main_udp_node in ['same', 'urltest', main_node]) && !uci.get(uciconfig, main_udp_node)) {
+		uci.set(uciconfig, ucimain, 'main_udp_node', 'nil');
+		main_udp_node = 'nil';
+		node_changed = true;
+	}
+
+	if (node_changed)
+		uci.commit(uciconfig);
+
 	dedicated_udp_node = !isEmpty(main_udp_node) && !(main_udp_node in ['same', main_node]);
 
 	dns_server = uci.get(uciconfig, ucimain, 'dns_server');
@@ -690,8 +707,11 @@ if (!isEmpty(main_node)) {
 			push(config.endpoints, generate_endpoint(main_node_cfg));
 			config.endpoints[length(config.endpoints)-1].tag = 'main-out';
 		} else {
-			push(config.outbounds, generate_outbound(main_node_cfg));
-			config.outbounds[length(config.outbounds)-1].tag = 'main-out';
+			const outbound = generate_outbound(main_node_cfg);
+			if (outbound) {
+				push(config.outbounds, outbound);
+				config.outbounds[length(config.outbounds)-1].tag = 'main-out';
+			}
 		}
 	}
 
@@ -715,8 +735,11 @@ if (!isEmpty(main_node)) {
 			push(config.endpoints, generate_endpoint(main_udp_node_cfg));
 			config.endpoints[length(config.endpoints)-1].tag = 'main-udp-out';
 		} else {
-			push(config.outbounds, generate_outbound(main_udp_node_cfg));
-			config.outbounds[length(config.outbounds)-1].tag = 'main-udp-out';
+			const outbound = generate_outbound(main_udp_node_cfg);
+			if (outbound) {
+				push(config.outbounds, outbound);
+				config.outbounds[length(config.outbounds)-1].tag = 'main-udp-out';
+			}
 		}
 	}
 
