@@ -79,6 +79,12 @@ These changes are integrated in the personal development branch:
 
 Run the smallest checks that cover the touched area:
 
+- Unified local check:
+  `tools/check-style.sh`
+- Enable the versioned pre-commit hook:
+  `git config core.hooksPath .githooks`
+- LuCI JavaScript and menu JSON lint:
+  `npm ci && npm run lint:js`
 - JavaScript syntax:
   `node --check htdocs/luci-static/resources/view/homeproxy/node.js`
 - Whitespace and patch hygiene:
@@ -91,6 +97,39 @@ Run the smallest checks that cover the touched area:
 - Package changes:
   build the APK/IPK through GitHub Actions and install the matching artifact on
   the target ImmortalWrt device.
+
+## Formatting Policy
+
+There is no safe whole-tree formatter for this repository today. LuCI
+JavaScript, ucode modules, OpenWrt init scripts, and package helper scripts all
+have different runtime expectations, so avoid broad automatic reformatting.
+
+Use `tools/check-style.sh` before committing. It performs whitespace checks,
+JavaScript syntax checks, JSON/YAML parsing checks, and shell syntax checks.
+Use `tools/check-style.sh --staged` from the pre-commit hook.
+
+LuCI JavaScript follows the upstream LuCI ESLint model. Install the pinned npm
+dependencies with `npm ci`, then run `npm run lint:js` when changing LuCI
+JavaScript or menu JSON. The local pre-commit hook intentionally stays light and
+does not run ESLint. GitHub Actions runs the full ESLint check.
+
+Only shell files currently support automatic formatting:
+
+`tools/check-style.sh --fix`
+
+Do not use shellcheck as a project check. OpenWrt `rc.common` init scripts and
+related helper scripts intentionally follow platform conventions that produce
+too many false positives and historical warnings for this repository.
+
+JavaScript and ucode changes should be formatted manually to match nearby code.
+ucode behavior should be validated on an ImmortalWrt device or a matching
+OpenWrt/ImmortalWrt rootfs because script imports depend on LuCI and platform
+modules.
+
+For ucode and shell, follow the wider OpenWrt-style project practice: prefer
+package builds, syntax checks, and runtime validation over generic lint tools.
+OpenWrt and ImmortalWrt package workflows emphasize build/formality checks,
+while LuCI provides the dedicated JavaScript ESLint path.
 
 ## Development References
 
@@ -105,6 +144,10 @@ change:
   https://openwrt.org/docs/guide-user/additional-software/apk
 - LuCI JavaScript APIs:
   https://openwrt.github.io/luci/jsapi/
+- LuCI ESLint workflow:
+  https://github.com/openwrt/luci/blob/master/.github/workflows/eslint.yml
+- LuCI ESLint config:
+  https://github.com/openwrt/luci/blob/master/eslint.config.mjs
 - ucode language and modules:
   https://ucode.mein.io/
 - OpenWrt firewall configuration:

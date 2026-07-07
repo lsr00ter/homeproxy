@@ -267,7 +267,7 @@ return baseclass.extend({
 	validateBase64Key(length, section_id, value) {
 		/* Thanks to luci-proto-wireguard */
 		if (section_id && value)
-			if (value.length !== length || !value.match(/^(?:[A-Za-z0-9+\/]{4})*(?:[A-Za-z0-9+\/]{2}==|[A-Za-z0-9+\/]{3}=)?$/) || value[length-1] !== '=')
+			if (value.length !== length || !value.match(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/) || value[length-1] !== '=')
 				return _('Expecting: %s').format(_('valid base64 key with %d characters').format(length));
 
 		return true;
@@ -283,7 +283,7 @@ return baseclass.extend({
 
 	validatePortRange(section_id, value) {
 		if (section_id && value) {
-			value = value.match(/^(\d+)?\:(\d+)?$/);
+			value = value.match(/^(\d+)?:(\d+)?$/);
 			if (value && (value[1] || value[2])) {
 				if (!value[1])
 					value[1] = 0;
