@@ -18,6 +18,34 @@ export function shellQuote(s) {
 	return `'${replace(s, "'", "'\\''")}'`;
 };
 
+function isHexByte(str) {
+	return !!match(str, /^[0-9A-Fa-f]{2}$/);
+};
+
+function shouldEncodeURLByte(byte) {
+	return byte <= 0x20 || byte >= 0x7f ||
+	       byte in [0x22, 0x3c, 0x3e, 0x5c, 0x5e, 0x60, 0x7b, 0x7c, 0x7d];
+};
+
+export function normalizeURL(url) {
+	let normalized = '';
+
+	for (let off = 0; off < length(url); off++) {
+		const byte = ord(url, off);
+
+		if (byte === 0x25 && off + 2 < length(url) && isHexByte(substr(url, off + 1, 2))) {
+			normalized = normalized + substr(url, off, 3);
+			off += 2;
+		} else if (shouldEncodeURLByte(byte)) {
+			normalized = normalized + sprintf('%%%02X', byte);
+		} else {
+			normalized = normalized + substr(url, off, 1);
+		}
+	}
+
+	return normalized;
+};
+
 export function isBinary(str) {
 	for (let off = 0, byte = ord(str); off < length(str); byte = ord(str, ++off))
 		if (byte <= 8 || (byte >= 14 && byte <= 31))
@@ -72,6 +100,8 @@ export function wGET(url, ua) {
 
 	if (!ua)
 		ua = 'Wget/1.21 (HomeProxy, like v2rayN)';
+
+	url = normalizeURL(url);
 
 	const output = executeCommand(`/usr/bin/wget -qO- --user-agent ${shellQuote(ua)} --timeout=10 ${shellQuote(url)}`) || {};
 	return trim(output.stdout);
