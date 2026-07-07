@@ -614,12 +614,10 @@ chain homeproxy_mangle_tun {
 	{% endif /* lan_global_proxy_mac_addrs */ %}
 	{% endif /* routing_mode */ %}
 
-	{% if (control_info.wan_direct_ipv4_ips): %}
-	ip daddr {{ array_to_nftarr(control_info.wan_direct_ipv4_ips) }} counter return
-	{% endif /* wan_direct_ipv4_ips */ %}
-	{% if (control_info.wan_direct_ipv6_ips): %}
-	ip6 daddr {{ array_to_nftarr(control_info.wan_direct_ipv6_ips) }} counter return
-	{% endif /* wan_direct_ipv6_ips */ %}
+	ip daddr @homeproxy_wan_direct_addr_v4 counter return
+	{% if (ipv6_support === '1'): %}
+	ip6 daddr @homeproxy_wan_direct_addr_v6 counter return
+	{% endif /* ipv6_support */ %}
 
 	{% if (routing_mode === 'gfwlist'): %}
 	ip daddr != @homeproxy_gfw_list_v4 counter return
