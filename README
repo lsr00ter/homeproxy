@@ -1,5 +1,166 @@
-TODO:
-- Subscription page slow response with a large number of nodes
-- Refactor nft rules
-- Move ACL settings to a dedicated page
-- Any other improvements
+# HomeProxy Development Notes
+
+This file tracks the development direction for luci-app-homeproxy. HomeProxy is
+an ImmortalWrt LuCI application around sing-box, UCI, fw4/nftables, dnsmasq, and
+service init scripts, so changes should be evaluated as part of that whole
+router workflow.
+
+## Project Direction
+
+- Keep HomeProxy predictable on ImmortalWrt first. OpenWrt behavior is useful
+  reference material, but runtime checks and package testing should use an
+  ImmortalWrt target whenever possible.
+- Treat UI, UCI config, subscription import, sing-box generation, firewall
+  rules, DNS handling, and service startup as one connected flow.
+- Prefer gentle fixes that preserve user configuration, fail open when startup
+  setup cannot be completed, and avoid leaving traffic in a half-captured state.
+- Keep upstream PRs small and focused. Use the personal branch for integrated
+  builds where multiple fixes need to be tested together.
+
+## Current Improvement State
+
+These changes are integrated in the personal development branch:
+
+- ACL domain rules are applied reliably after saving ACL-only changes.
+- Direct-domain rules are honored in TUN mode by feeding dnsmasq nftsets.
+- Startup setup failures fail open instead of leaving traffic half-captured.
+- Legacy Shadowsocks share links are accepted during subscription import.
+- Stale main node references are cleared when subscription nodes are removed.
+- Invalid VLESS share links are rejected instead of imported as broken nodes.
+- Subscription URLs are normalized before download, so raw non-ASCII query
+  values do not break wget/uclient-fetch.
+- A dedicated LuCI log view is available for HomeProxy logs.
+- Built-in rule set bootstrap avoids using the proxy path before it exists.
+- Subscription node page rendering is improved for large subscription sets.
+
+## Open TODO
+
+- [x] Improve subscription page performance
+  The subscription node page has been optimized for large imported node sets.
+  Keep future UI changes focused on preserving this lower render cost.
+
+- [ ] Refactor nft rules
+  Simplify and document nftables rule generation. The goal is to make routing,
+  ACL, TUN, DNS redirect, and dnsmasq nftset behavior easier to reason about.
+  Direct-domain nftset handling has been improved, but the broader nft rule
+  refactor is still open.
+
+- [ ] Move ACL settings to a dedicated page
+  ACL settings currently share space with other client settings. Moving them to
+  their own page should make rule configuration clearer and easier to maintain.
+
+- [ ] Other improvements
+  Keep small fixes and cleanup focused, tested, and easy to review.
+
+## Development Principles
+
+- Prefer one fix per branch and one clean scoped commit per upstream PR.
+  Use branch names such as `fix/subscription-vless-validation` or
+  `fix/subscription-url-normalization`.
+- Use Conventional Commit titles, for example
+  `fix(subscribe): reject invalid VLESS links`.
+- Keep upstream-targeted fixes based on the latest `origin/dev`.
+- Use the personal branch only for integrated builds and device testing.
+- Follow the existing code style:
+  - keep SPDX headers and `'use strict';` where the file already has them;
+  - use tabs for indentation in JavaScript and ucode files;
+  - keep ucode helpers small and local unless they are shared by multiple
+    scripts;
+  - prefer UCI, ubus, dnsmasq, fw4, and sing-box helpers already used by the
+    project instead of ad-hoc shell parsing;
+  - do not change LuCI wording or translations unless the UI behavior changes.
+- Do not silently accept invalid subscription nodes. Parser behavior should
+  match the LuCI import path and reject missing required fields before writing
+  UCI sections.
+- Do not rewrite user-entered subscription URLs in the UI just to make downloads
+  work. Normalize URLs at the download boundary before calling wget.
+
+## Validation Checklist
+
+Run the smallest checks that cover the touched area:
+
+- Unified local check:
+  `tools/check-style.sh`
+- Enable the versioned pre-commit hook:
+  `git config core.hooksPath .githooks`
+- LuCI JavaScript and menu JSON lint:
+  `npm ci && npm run lint:js`
+- JavaScript syntax:
+  `node --check htdocs/luci-static/resources/view/homeproxy/node.js`
+- Whitespace and patch hygiene:
+  `git diff --check`
+- Subscription parser changes:
+  run `/etc/homeproxy/scripts/update_subscriptions.uc` on an ImmortalWrt test
+  device and inspect `/var/run/homeproxy/homeproxy.log`.
+- Client generator changes:
+  run the generator and `sing-box check` on the generated client config.
+- Package changes:
+  build the APK/IPK through GitHub Actions and install the matching artifact on
+  the target ImmortalWrt device.
+
+## Formatting Policy
+
+There is no safe whole-tree formatter for this repository today. LuCI
+JavaScript, ucode modules, OpenWrt init scripts, and package helper scripts all
+have different runtime expectations, so avoid broad automatic reformatting.
+
+Use `tools/check-style.sh` before committing. It performs whitespace checks,
+JavaScript syntax checks, JSON/YAML parsing checks, and shell syntax checks.
+Use `tools/check-style.sh --staged` from the pre-commit hook.
+
+LuCI JavaScript follows the upstream LuCI ESLint model. Install the pinned npm
+dependencies with `npm ci`, then run `npm run lint:js` when changing LuCI
+JavaScript or menu JSON. The local pre-commit hook intentionally stays light and
+does not run ESLint. GitHub Actions runs the full ESLint check.
+
+Only shell files currently support automatic formatting:
+
+`tools/check-style.sh --fix`
+
+Do not use shellcheck as a project check. OpenWrt `rc.common` init scripts and
+related helper scripts intentionally follow platform conventions that produce
+too many false positives and historical warnings for this repository.
+
+JavaScript and ucode changes should be formatted manually to match nearby code.
+ucode behavior should be validated on an ImmortalWrt device or a matching
+OpenWrt/ImmortalWrt rootfs because script imports depend on LuCI and platform
+modules.
+
+For ucode and shell, follow the wider OpenWrt-style project practice: prefer
+package builds, syntax checks, and runtime validation over generic lint tools.
+OpenWrt and ImmortalWrt package workflows emphasize build/formality checks,
+while LuCI provides the dedicated JavaScript ESLint path.
+
+## Development References
+
+Use these references to understand the platform expectations before making a
+change:
+
+- ImmortalWrt source tree:
+  https://github.com/immortalwrt/immortalwrt
+- OpenWrt package development:
+  https://openwrt.org/docs/guide-developer/packages
+- OpenWrt APK package manager:
+  https://openwrt.org/docs/guide-user/additional-software/apk
+- LuCI JavaScript APIs:
+  https://openwrt.github.io/luci/jsapi/
+- LuCI ESLint workflow:
+  https://github.com/openwrt/luci/blob/master/.github/workflows/eslint.yml
+- LuCI ESLint config:
+  https://github.com/openwrt/luci/blob/master/eslint.config.mjs
+- ucode language and modules:
+  https://ucode.mein.io/
+- OpenWrt firewall configuration:
+  https://openwrt.org/docs/guide-user/firewall/firewall_configuration
+- dnsmasq manual:
+  https://thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html
+- sing-box configuration:
+  https://sing-box.sagernet.org/configuration/
+
+Local orientation:
+
+- LuCI views live under `htdocs/luci-static/resources/view/homeproxy/`.
+- Runtime ucode scripts live under `root/etc/homeproxy/scripts/`.
+- Service lifecycle is handled by `root/etc/init.d/homeproxy`.
+- Menu, translation, CI, and package metadata live under `root/usr/share/`,
+  `po/`, `.github/`, and the package `Makefile`.

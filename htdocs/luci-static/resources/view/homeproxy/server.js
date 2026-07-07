@@ -66,7 +66,7 @@ function handleGenKey(option) {
 	let section_id = this.section.section;
 	let type = this.section.getOption('type')?.formvalue(section_id);
 	let widget = L.bind((option) => {
-		return this.map.findElement('id', 'widget.' + this.cbid(section_id).replace(/\.[^\.]+$/, '.') + option);
+		return this.map.findElement('id', 'widget.' + this.cbid(section_id).replace(/\.[^.]+$/, '.') + option);
 	}, this);
 
 	const callSingBoxGenerator = rpc.declare({

@@ -1,0 +1,13 @@
+{
+	"name": "luci-app-homeproxy",
+	"private": true,
+	"scripts": {
+		"lint:js": "eslint htdocs/luci-static/resources/**/*.js root/usr/share/luci/menu.d/*.json"
+	},
+	"devDependencies": {
+		"@eslint/js": "^9.31.0",
+		"@eslint/json": "^0.13.2",
+		"eslint": "^9.31.0",
+		"globals": "^15.15.0"
+	}
+}
