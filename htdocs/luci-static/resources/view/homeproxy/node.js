@@ -444,6 +444,27 @@ function parseShareLink(uri, features) {
 	return config;
 }
 
+function removeNodeReferences(config, section_id) {
+	if (uci.get(config, 'config', 'main_node') === section_id)
+		uci.set(config, 'config', 'main_node', 'nil');
+
+	if (uci.get(config, 'config', 'main_udp_node') === section_id)
+		uci.set(config, 'config', 'main_udp_node', 'nil');
+
+	for (let opt of [ 'main_urltest_nodes', 'main_udp_urltest_nodes' ]) {
+		let nodes = uci.get(config, 'config', opt);
+		if (Array.isArray(nodes) && nodes.includes(section_id)) {
+			nodes = nodes.filter((node) => node !== section_id);
+			if (nodes.length)
+				uci.set(config, 'config', opt, nodes);
+			else
+				uci.unset(config, 'config', opt);
+		} else if (nodes === section_id) {
+			uci.unset(config, 'config', opt);
+		}
+	}
+}
+
 function renderNodeSettings(section, data, features, main_node, routing_mode) {
 	let s = section, o;
 	s.rowcolors = true;
@@ -451,6 +472,11 @@ function renderNodeSettings(section, data, features, main_node, routing_mode) {
 	s.nodescriptions = true;
 	s.modaltitle = L.bind(hp.loadModalTitle, this, _('Node'), _('Add a node'), data[0]);
 	s.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
+	s.handleRemove = function(section_id) {
+		removeNodeReferences(data[0], section_id);
+
+		return form.GridSection.prototype.handleRemove.apply(this, arguments);
+	}
 
 	if (routing_mode !== 'custom') {
 		o = s.option(form.Button, '_apply', _('Apply'));
