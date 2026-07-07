@@ -1339,13 +1339,17 @@ msgstr "本地"
 msgid "Local address"
 msgstr "本地地址"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:191
+#: htdocs/luci-static/resources/view/homeproxy/logs.js:172
 msgid "Log file does not exist."
 msgstr "日志文件不存在。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:184
+#: htdocs/luci-static/resources/view/homeproxy/logs.js:102
 msgid "Log is empty."
 msgstr "日志为空。"
+
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:47
+msgid "Logs"
+msgstr "日志"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:930
 msgid "MTU"
@@ -1482,6 +1486,10 @@ msgstr "匹配用户名。"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:261
 msgid "Max download speed"
 msgstr "最大下载速度"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:293
+msgid "Max rows:"
+msgstr "最大行数："
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:580
 #: htdocs/luci-static/resources/view/homeproxy/server.js:262
@@ -1634,6 +1642,10 @@ msgstr "无订阅节点"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1271
 msgid "No valid share link found."
 msgstr "找不到有效分享链接。"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:289
+msgid "Not"
+msgstr "非"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:419
 #: htdocs/luci-static/resources/view/homeproxy/node.js:396
@@ -2173,6 +2185,14 @@ msgstr "当 ClientHello 的 ServerName 字段为空时，选择证书所使用�
 #: htdocs/luci-static/resources/view/homeproxy/server.js:151
 msgid "Server settings"
 msgstr "服务器设置"
+
+#: htdocs/luci-static/resources/view/homeproxy/logs.js:163
+msgid "Scroll to head"
+msgstr "滚动到开头"
+
+#: htdocs/luci-static/resources/view/homeproxy/logs.js:155
+msgid "Scroll to tail"
+msgstr "滚动到末尾"
 
 #: root/usr/share/luci/menu.d/luci-app-homeproxy.json:38
 msgid "Service Status"
@@ -3057,6 +3077,10 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/status.js:59
 msgid "unchecked"
 msgstr "未检查"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:291
+msgid "including:"
+msgstr "包含："
 
 #: htdocs/luci-static/resources/homeproxy.js:237
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1302
