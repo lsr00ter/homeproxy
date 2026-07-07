@@ -1310,12 +1310,16 @@ msgstr ""
 msgid "Local address"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:191
+#: htdocs/luci-static/resources/view/homeproxy/logs.js:172
 msgid "Log file does not exist."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:184
+#: htdocs/luci-static/resources/view/homeproxy/logs.js:102
 msgid "Log is empty."
+msgstr ""
+
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:47
+msgid "Logs"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:930
@@ -1452,6 +1456,10 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:579
 #: htdocs/luci-static/resources/view/homeproxy/server.js:261
 msgid "Max download speed"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:293
+msgid "Max rows:"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:580
@@ -1602,6 +1610,10 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1271
 msgid "No valid share link found."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:289
+msgid "Not"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:419
@@ -2141,6 +2153,14 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:151
 msgid "Server settings"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/logs.js:163
+msgid "Scroll to head"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/logs.js:155
+msgid "Scroll to tail"
 msgstr ""
 
 #: root/usr/share/luci/menu.d/luci-app-homeproxy.json:38
@@ -2986,6 +3006,10 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:59
 msgid "unchecked"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:291
+msgid "including:"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:237
