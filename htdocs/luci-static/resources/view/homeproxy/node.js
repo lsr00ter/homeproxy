@@ -19,6 +19,122 @@ function allowInsecureConfirm(ev, _section_id, value) {
 		ev.target.firstElementChild.checked = null;
 }
 
+const shadowsocks_stream_encrypt_methods = [
+	'aes-128-ctr',
+	'aes-192-ctr',
+	'aes-256-ctr',
+	'aes-128-cfb',
+	'aes-192-cfb',
+	'aes-256-cfb',
+	'chacha20',
+	'chacha20-ietf',
+	'rc4-md5'
+];
+
+function validateShadowsocksConfig(config) {
+	if (!config || !config.address || !config.port || !config.shadowsocks_encrypt_method)
+		return null;
+
+	if (!hp.shadowsocks_encrypt_methods.includes(config.shadowsocks_encrypt_method) &&
+	    !shadowsocks_stream_encrypt_methods.includes(config.shadowsocks_encrypt_method))
+		return null;
+
+	if (config.shadowsocks_encrypt_method !== 'none' && !config.password)
+		return null;
+
+	if (!config.label)
+		config.label = config.address + ':' + config.port;
+
+	return config;
+}
+
+function parseShadowsocksLegacyUri(uri, label) {
+	uri = uri.trim();
+
+	let userinfo, server, parts = uri.split('@');
+	if (parts.length < 2)
+		return null;
+	else if (parts.length > 2)
+		parts = [ parts.slice(0, -1).join('@'), parts.slice(-1).toString() ];
+
+	userinfo = parts[0].split(':');
+	if (userinfo.length < 2)
+		return null;
+
+	server = parts[1].match(/^\[?(.+?)\]?:(\d+)$/);
+	if (!server)
+		return null;
+
+	return validateShadowsocksConfig({
+		label: label,
+		type: 'shadowsocks',
+		address: server[1],
+		port: server[2],
+		shadowsocks_encrypt_method: userinfo[0],
+		password: userinfo.slice(1).join(':')
+	});
+}
+
+function parseShadowsocksShareLink(uri) {
+	let label = null, suri = uri.split('#'), slabel = '';
+	if (suri.length <= 2) {
+		if (suri.length === 2) {
+			slabel = '#' + suri[1];
+			try {
+				label = decodeURIComponent(suri[1]);
+			} catch(e) {
+				label = suri[1];
+			}
+		}
+
+		try {
+			let decoded = hp.decodeBase64Str(suri[0]);
+			if (decoded)
+				uri = decoded.trim() + slabel;
+		} catch(e) { }
+	}
+
+	try {
+		/* SIP002 format https://shadowsocks.org/guide/sip002.html */
+		let url = new URL('http://' + uri),
+		    userinfo, plugin, plugin_opts;
+
+		label = url.hash ? decodeURIComponent(url.hash.slice(1)) : label;
+		if (url.username && url.password) {
+			/* User info encoded with URIComponent */
+			userinfo = [decodeURIComponent(url.username), decodeURIComponent(url.password)];
+		} else if (url.username) {
+			/* User info encoded with base64 */
+			userinfo = hp.decodeBase64Str(decodeURIComponent(url.username)).split(':');
+			if (userinfo.length > 1)
+				userinfo = [userinfo[0], userinfo.slice(1).join(':')];
+		}
+
+		if (url.search && url.searchParams.get('plugin')) {
+			let plugin_info = url.searchParams.get('plugin').split(';');
+			plugin = (plugin_info[0] === 'simple-obfs') ? 'obfs-local' : plugin_info[0];
+			plugin_opts = (plugin_info.length > 1) ? plugin_info.slice(1).join(';') : null;
+		}
+
+		let config = validateShadowsocksConfig({
+			label: label,
+			type: 'shadowsocks',
+			address: url.hostname,
+			port: url.port || '80',
+			shadowsocks_encrypt_method: userinfo?.[0],
+			password: userinfo?.[1],
+			shadowsocks_plugin: plugin,
+			shadowsocks_plugin_opts: plugin_opts
+		});
+
+		if (config)
+			return config;
+	} catch(e) { }
+
+	/* Legacy format https://github.com/shadowsocks/shadowsocks-org/commit/78ca46cd6859a4e9475953ed34a2d301454f579e */
+	return parseShadowsocksLegacyUri(uri.split('#')[0], label);
+}
+
 function parseShareLink(uri, features) {
 	let config, url, params;
 
@@ -132,67 +248,7 @@ function parseShareLink(uri, features) {
 
 			break;
 		case 'ss':
-			try {
-				/* "Lovely" Shadowrocket format */
-				try {
-					let suri = uri[1].split('#'), slabel = '';
-					if (suri.length <= 2) {
-						if (suri.length === 2)
-							slabel = '#' + suri[1];
-						uri[1] = hp.decodeBase64Str(suri[0]) + slabel;
-					}
-				} catch(e) { }
-
-				/* SIP002 format https://shadowsocks.org/guide/sip002.html */
-				url = new URL('http://' + uri[1]);
-
-				let userinfo;
-				if (url.username && url.password) {
-					/* User info encoded with URIComponent */
-					userinfo = [url.username, decodeURIComponent(url.password)];
-				} else if (url.username) {
-					/* User info encoded with base64 */
-					userinfo = hp.decodeBase64Str(decodeURIComponent(url.username)).split(':');
-					if (userinfo.length > 1)
-						userinfo = [userinfo[0], userinfo.slice(1).join(':')]
-				}
-
-				if (!hp.shadowsocks_encrypt_methods.includes(userinfo[0]))
-					return null;
-
-				let plugin, plugin_opts;
-				if (url.search && url.searchParams.get('plugin')) {
-					let plugin_info = url.searchParams.get('plugin').split(';');
-					plugin = plugin_info[0];
-					plugin_opts = (plugin_info.length > 1) ? plugin_info.slice(1).join(';') : null;
-				}
-
-				config = {
-					label: url.hash ? decodeURIComponent(url.hash.slice(1)) : null,
-					type: 'shadowsocks',
-					address: url.hostname,
-					port: url.port || '80',
-					shadowsocks_encrypt_method: userinfo[0],
-					password: userinfo[1],
-					shadowsocks_plugin: plugin,
-					shadowsocks_plugin_opts: plugin_opts
-				};
-			} catch(e) {
-				/* Legacy format https://github.com/shadowsocks/shadowsocks-org/commit/78ca46cd6859a4e9475953ed34a2d301454f579e */
-				uri = uri[1].split('@');
-				if (uri.length < 2)
-					return null;
-				else if (uri.length > 2)
-					uri = [ uri.slice(0, -1).join('@'), uri.slice(-1).toString() ];
-
-				config = {
-					type: 'shadowsocks',
-					address: uri[1].split(':')[0],
-					port: uri[1].split(':')[1],
-					shadowsocks_encrypt_method: uri[0].split(':')[0],
-					password: uri[0].split(':').slice(1).join(':')
-				};
-			}
+			config = parseShadowsocksShareLink(uri[1]);
 
 			break;
 		case 'trojan':
