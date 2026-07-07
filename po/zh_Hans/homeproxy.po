@@ -874,6 +874,22 @@ msgstr "上传 %s 失败，错误：%s。"
 msgid "Fatal"
 msgstr "致命"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:151
+msgid "Displaying %d-%d of %d"
+msgstr "显示第 %d-%d 项，共 %d 项"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:143
+msgid "Filter"
+msgstr "过滤"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:163
+msgid "Next page"
+msgstr "下一页"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:156
+msgid "Previous page"
+msgstr "上一页"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1374
 msgid "Filter keywords"
 msgstr "过滤关键词"
@@ -2329,9 +2345,13 @@ msgstr ""
 msgid "String"
 msgstr "字符串"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1322
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1526
 msgid "Sub (%s)"
 msgstr "订阅（%s）"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1579
+msgid "Subscription nodes"
+msgstr "订阅节点"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1349
 msgid "Subscription URL-s"

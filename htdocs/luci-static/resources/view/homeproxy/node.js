@@ -14,6 +14,274 @@
 'require homeproxy as hp';
 'require tools.widgets as widgets';
 
+/* Keep long node labels/addresses from breaking the grid layout on
+ * desktop and mobile. Long labels wrap instead of collapsing early,
+ * and long unbreakable hostnames wrap instead of overflowing. */
+const css = '										\
+.cbi-section-table td.cbi-section-table-titles {					\
+	min-width: 10em;								\
+	overflow-wrap: break-word;							\
+	overflow-wrap: anywhere;							\
+}											\
+.cbi-section-table td.cbi-value-field[data-name="address"] {				\
+	max-width: 16em;								\
+	overflow-wrap: break-word;							\
+	overflow-wrap: anywhere;							\
+}											\
+.homeproxy-node-pager {								\
+	display: flex;									\
+	align-items: center;								\
+	flex-wrap: wrap;								\
+	gap: .5em;									\
+	justify-content: space-between;							\
+	margin: .5em 0;								\
+}											\
+.homeproxy-node-filter { flex: 1 1 16em; }						\
+.homeproxy-node-filter > input { width: 100%; }					\
+.homeproxy-node-page-status { white-space: nowrap; }					\
+.homeproxy-sub-tabs { margin-bottom: .75em; }					\
+@media screen and (max-width: 600px) {							\
+	.cbi-section-table td.cbi-section-table-titles { min-width: 7em; }		\
+	.cbi-section-table td.cbi-value-field[data-name="address"] { max-width: 10em; }	\
+	.homeproxy-node-pager { align-items: stretch; }					\
+	.homeproxy-node-filter { flex-basis: 100%; }					\
+}';
+
+const NODE_PAGE_SIZE = 100;
+
+const CBIPagedGridSection = form.GridSection.extend({
+	__name__: 'CBI.PagedGridSection',
+
+	page: 0,
+	pageSize: NODE_PAGE_SIZE,
+	query: '',
+	searchTimer: null,
+	activeGroup: null,
+
+	cfgsections() {
+		let sections = this.getFilteredSections();
+		let pageSize = this.pageSize || NODE_PAGE_SIZE;
+		let pages = Math.max(Math.ceil(sections.length / pageSize), 1);
+
+		if (this.page >= pages)
+			this.page = pages - 1;
+		else if (this.page < 0)
+			this.page = 0;
+
+		this.filteredSectionCount = sections.length;
+		this.totalSectionCount = this.getAllSections().length;
+
+		return sections.slice(this.page * pageSize, (this.page + 1) * pageSize);
+	},
+
+	getAllSections() {
+		if (Array.isArray(this.groups) && this.groups.length) {
+			let group = this.getActiveGroup();
+			return group ? group.sections() : [];
+		}
+
+		if (typeof this.allsections === 'function')
+			return this.allsections();
+		else if (Array.isArray(this.allsections))
+			return this.allsections;
+
+		return form.GridSection.prototype.cfgsections.apply(this, arguments);
+	},
+
+	getActiveGroup() {
+		if (!Array.isArray(this.groups) || !this.groups.length)
+			return null;
+
+		let group = this.groups.find((item) => item.key === this.activeGroup);
+		if (group)
+			return group;
+
+		this.activeGroup = this.groups[0].key;
+		return this.groups[0];
+	},
+
+	getFilteredSections() {
+		let query = (this.query || '').trim().toLowerCase();
+		let sections = this.getAllSections();
+
+		if (!query)
+			return sections;
+
+		return sections.filter((section_id) => {
+			let config = this.uciconfig || this.map.config;
+			let values = [
+				section_id,
+				this.titleFn('sectiontitle', section_id),
+				uci.get(config, section_id, 'label'),
+				uci.get(config, section_id, 'type'),
+				uci.get(config, section_id, 'address'),
+				uci.get(config, section_id, 'port')
+			];
+
+			return values.join(' ').toLowerCase().includes(query);
+		});
+	},
+
+	handleFilterInput(ev) {
+		let value = ev.target.value;
+
+		if (this.searchTimer !== null)
+			window.clearTimeout(this.searchTimer);
+
+		this.searchTimer = window.setTimeout(() => {
+			this.query = value;
+			this.page = 0;
+			this.map.reset();
+		}, 250);
+	},
+
+	handlePage(ev, delta) {
+		ev.preventDefault();
+		this.page += delta;
+		return this.map.reset();
+	},
+
+	handleGroup(ev, group) {
+		ev.preventDefault();
+		this.activeGroup = group.key;
+		this.page = 0;
+		return this.map.reset();
+	},
+
+	renderGroupTabs() {
+		if (!Array.isArray(this.groups) || this.groups.length < 2)
+			return E([]);
+
+		this.getActiveGroup();
+
+		return E('ul', { 'class': 'cbi-tabmenu homeproxy-sub-tabs' },
+			this.groups.map((group) => E('li', {
+				'class': (group.key === this.activeGroup) ? 'cbi-tab' : 'cbi-tab-disabled',
+				'data-tab': group.key
+			}, E('a', {
+				'href': '#',
+				'click': (ev) => this.handleGroup(ev, group)
+			}, [ group.title ]))));
+	},
+
+	renderPageControls() {
+		let pageSize = this.pageSize || NODE_PAGE_SIZE;
+		let total = this.filteredSectionCount || 0;
+		let totalSections = this.totalSectionCount || total;
+		let pages = Math.max(Math.ceil(total / pageSize), 1);
+		let start = total ? (this.page * pageSize) + 1 : 0;
+		let end = Math.min((this.page + 1) * pageSize, total);
+
+		if (totalSections <= pageSize && !this.query)
+			return E([]);
+
+		return E('div', { 'class': 'homeproxy-node-pager' }, [
+			E('span', { 'class': 'control-group homeproxy-node-filter' }, [
+				E('input', {
+					'type': 'text',
+					'class': 'cbi-input-text',
+					'placeholder': _('Filter'),
+					'value': this.query || '',
+					'input': L.bind(this.handleFilterInput, this),
+					'keydown': (ev) => {
+						if (ev.keyCode === 13)
+							ev.preventDefault();
+					}
+				})
+			]),
+			E('span', { 'class': 'homeproxy-node-page-status' },
+				_('Displaying %d-%d of %d').format(start, end, total)),
+			E('span', { 'class': 'control-group' }, [
+				E('button', {
+					'type': 'button',
+					'class': 'btn cbi-button-neutral',
+					'aria-label': _('Previous page'),
+					'disabled': this.page <= 0 || null,
+					'click': (ev) => this.handlePage(ev, -1)
+				}, [ '<' ]),
+				E('button', {
+					'type': 'button',
+					'class': 'btn cbi-button-neutral',
+					'aria-label': _('Next page'),
+					'disabled': this.page >= pages - 1 || null,
+					'click': (ev) => this.handlePage(ev, 1)
+				}, [ '>' ])
+			])
+		]);
+	},
+
+	renderContents(cfgsections, nodes) {
+		let sectionEl = form.GridSection.prototype.renderContents.apply(this, arguments);
+		let tableEl = sectionEl.querySelector('table.cbi-section-table');
+
+		if (tableEl) {
+			sectionEl.insertBefore(this.renderGroupTabs(), tableEl);
+			sectionEl.insertBefore(this.renderPageControls(), tableEl);
+		}
+
+		return sectionEl;
+	},
+
+	handleAdd() {
+		delete this.map.homeproxyNodeGroups;
+		return form.GridSection.prototype.handleAdd.apply(this, arguments);
+	},
+
+	handleRemove() {
+		delete this.map.homeproxyNodeGroups;
+		return form.GridSection.prototype.handleRemove.apply(this, arguments);
+	},
+
+	handleModalSave() {
+		delete this.map.homeproxyNodeGroups;
+		return form.GridSection.prototype.handleModalSave.apply(this, arguments);
+	},
+
+	handleModalCancel() {
+		delete this.map.homeproxyNodeGroups;
+		return form.GridSection.prototype.handleModalCancel.apply(this, arguments);
+	}
+});
+
+function loadNodeGroups(map, uciconfig, subinfo) {
+	if (map.homeproxyNodeGroups)
+		return map.homeproxyNodeGroups;
+
+	let groups = {
+		user: [],
+		subscriptions: {}
+	};
+
+	for (let hash of Object.keys(subinfo))
+		groups.subscriptions[hash] = [];
+
+	uci.sections(uciconfig, 'node', (res) => {
+		let grouphash = res.grouphash;
+
+		if (grouphash && groups.subscriptions[grouphash])
+			groups.subscriptions[grouphash].push(res['.name']);
+		else
+			groups.user.push(res['.name']);
+	});
+
+	map.homeproxyNodeGroups = groups;
+	return groups;
+}
+
+function setupPagedNodeSection(section, map, uciconfig, subinfo, getSections) {
+	section.pageSize = NODE_PAGE_SIZE;
+	section.allsections = () => getSections(loadNodeGroups(map, uciconfig, subinfo));
+}
+
+function setupGroupedNodeSection(section, map, uciconfig, subinfo) {
+	section.pageSize = NODE_PAGE_SIZE;
+	section.groups = Object.keys(subinfo).map((hash) => ({
+		key: hash,
+		title: _('Sub (%s)').format(subinfo[hash]),
+		sections: () => loadNodeGroups(map, uciconfig, subinfo).subscriptions[hash] || []
+	}));
+}
+
 function allowInsecureConfirm(ev, _section_id, value) {
 	if (value === '1' && !confirm(_('Are you sure to allow insecure?')))
 		ev.target.firstElementChild.checked = null;
@@ -1282,13 +1550,7 @@ return view.extend({
 		let features = data[1];
 
 		/* Cache subscription information, it will be called multiple times */
-		let subinfo = [];
-		for (let suburl of (uci.get(data[0], 'subscription', 'subscription_url') || [])) {
-			const url = new URL(suburl);
-			const urlhash = hp.calcStringMD5(suburl.replace(/#.*$/, ''));
-			const title = url.hash ? decodeURIComponent(url.hash.slice(1)) : url.hostname;
-			subinfo.push({ 'hash': urlhash, 'title': title });
-		}
+		let subinfo = hp.loadSubscriptionInfo(data[0]);
 
 		m = new form.Map('homeproxy', _('Edit nodes'));
 
@@ -1297,16 +1559,10 @@ return view.extend({
 		/* Node settings start */
 		/* User nodes start */
 		s.tab('node', _('Nodes'));
-		o = s.taboption('node', form.SectionValue, '_node', form.GridSection, 'node');
+		o = s.taboption('node', form.SectionValue, '_node', CBIPagedGridSection, 'node');
 		ss = renderNodeSettings(o.subsection, data, features, main_node, routing_mode);
 		ss.addremove = true;
-		ss.filter = function(section_id) {
-			for (let info of subinfo)
-				if (info.hash === uci.get(data[0], section_id, 'grouphash'))
-					return false;
-
-			return true;
-		}
+		setupPagedNodeSection(ss, m, data[0], subinfo, (groups) => groups.user);
 		/* Import subscription links start */
 		/* Thanks to luci-app-shadowsocks-libev */
 		ss.handleLinkImport = function() {
@@ -1355,6 +1611,7 @@ return view.extend({
 									ui.addNotification(null, E('p', _('Successfully imported %s nodes of total %s.').format(
 										imported_node, input_links.length)));
 
+								delete this.map.homeproxyNodeGroups;
 								return uci.save()
 									.then(L.bind(this.map.load, this.map))
 									.then(L.bind(this.map.reset, this.map))
@@ -1400,13 +1657,11 @@ return view.extend({
 		/* User nodes end */
 
 		/* Subscription nodes start */
-		for (const info of subinfo) {
-			s.tab('sub_' + info.hash, _('Sub (%s)').format(info.title));
-			o = s.taboption('sub_' + info.hash, form.SectionValue, '_sub_' + info.hash, form.GridSection, 'node');
+		if (Object.keys(subinfo).length > 0) {
+			s.tab('sub_node', _('Subscription nodes'));
+			o = s.taboption('sub_node', form.SectionValue, '_sub_node', CBIPagedGridSection, 'node');
 			ss = renderNodeSettings(o.subsection, data, features, main_node, routing_mode);
-			ss.filter = function(section_id) {
-				return (uci.get(data[0], section_id, 'grouphash') === info.hash);
-			}
+			setupGroupedNodeSection(ss, m, data[0], subinfo);
 		}
 		/* Subscription nodes end */
 		/* Node settings end */
@@ -1535,6 +1790,7 @@ return view.extend({
 			if (subnodes.includes(uci.get(data[0], 'config', 'main_udp_node')))
 				uci.set(data[0], 'config', 'main_udp_node', 'nil');
 
+			delete this.map.homeproxyNodeGroups;
 			this.inputtitle = _('%s nodes removed').format(subnodes.length);
 			this.readonly = true;
 
@@ -1542,6 +1798,6 @@ return view.extend({
 		}
 		/* Subscriptions settings end */
 
-		return m.render();
+		return m.render().then((node) => E([ E('style', [ css ]), node ]));
 	}
 });
