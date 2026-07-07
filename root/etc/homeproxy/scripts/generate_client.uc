@@ -892,26 +892,27 @@ if (!isEmpty(main_node)) {
 		});
 
 	if (routing_mode === 'bypass_mainland_china') {
+		/* Built-in rule sets must not depend on main-out during startup. */
 		push(config.route.rule_set, {
 			type: 'remote',
 			tag: 'geoip-cn',
 			format: 'binary',
 			url: 'https://fastly.jsdelivr.net/gh/1715173329/IPCIDR-CHINA@rule-set/cn.srs',
-			download_detour: 'main-out'
+			download_detour: 'direct-out'
 		});
 		push(config.route.rule_set, {
 			type: 'remote',
 			tag: 'geosite-cn',
 			format: 'binary',
 			url: 'https://fastly.jsdelivr.net/gh/1715173329/sing-geosite@rule-set-unstable/geosite-geolocation-cn.srs',
-			download_detour: 'main-out'
+			download_detour: 'direct-out'
 		});
 		push(config.route.rule_set, {
 			type: 'remote',
 			tag: 'geosite-noncn',
 			format: 'binary',
 			url: 'https://fastly.jsdelivr.net/gh/1715173329/sing-geosite@rule-set-unstable/geosite-geolocation-!cn.srs',
-			download_detour: 'main-out'
+			download_detour: 'direct-out'
 		});
 	}
 
