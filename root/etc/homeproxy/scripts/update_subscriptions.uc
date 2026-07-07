@@ -421,6 +421,11 @@ function parse_uri(uri) {
 
 				return null;
 			}
+			/* Check if uuid and type exist */
+			if (!url.username || !params.type) {
+				log(sprintf('Skipping invalid %s node: %s.', uri[0], urldecode(url.hash) || url.hostname || 'NULL'));
+				return null;
+			}
 
 			config = {
 				label: url.hash ? urldecode(url.hash) : null,
