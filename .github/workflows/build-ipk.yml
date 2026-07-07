@@ -5,6 +5,7 @@ on:
     branches:
       - 'master'
       - 'dev'
+      - 'personal/**'
     paths:
       - 'htdocs/**'
       - 'po/**'
@@ -31,6 +32,8 @@ on:
   release:
     types:
       - published
+
+  workflow_dispatch:
 
 jobs:
   build:
