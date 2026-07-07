@@ -851,6 +851,22 @@ msgstr ""
 msgid "Fatal"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:151
+msgid "Displaying %d-%d of %d"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:143
+msgid "Filter"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:163
+msgid "Next page"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:156
+msgid "Previous page"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1374
 msgid "Filter keywords"
 msgstr ""
@@ -2267,7 +2283,11 @@ msgstr ""
 msgid "String"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1337
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1526
+msgid "Sub (%s)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1579
 msgid "Subscription nodes"
 msgstr ""
 
