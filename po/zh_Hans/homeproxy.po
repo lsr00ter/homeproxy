@@ -2043,6 +2043,10 @@ msgstr "移除 %s 个节点"
 msgid "Remove all nodes from subscriptions"
 msgstr "移除所有订阅节点"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1606
+msgid "Removed %s node(s) from deleted subscriptions."
+msgstr "已移除 %s 个已删除订阅的节点。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1203
 msgid "Reply with REFUSED"
 msgstr "回复 REFUSED"

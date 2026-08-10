@@ -712,25 +712,68 @@ function parseShareLink(uri, features) {
 	return config;
 }
 
-function removeNodeReferences(config, section_id) {
-	if (uci.get(config, 'config', 'main_node') === section_id)
+function toArray(value) {
+	if (!value)
+		return [];
+
+	return Array.isArray(value) ? value : [ value ];
+}
+
+function removeNodeReferences(config, section_ids) {
+	if (!section_ids.length)
+		return;
+
+	if (section_ids.includes(uci.get(config, 'config', 'main_node')))
 		uci.set(config, 'config', 'main_node', 'nil');
 
-	if (uci.get(config, 'config', 'main_udp_node') === section_id)
+	if (section_ids.includes(uci.get(config, 'config', 'main_udp_node')))
 		uci.set(config, 'config', 'main_udp_node', 'nil');
 
 	for (let opt of [ 'main_urltest_nodes', 'main_udp_urltest_nodes' ]) {
-		let nodes = uci.get(config, 'config', opt);
-		if (Array.isArray(nodes) && nodes.includes(section_id)) {
-			nodes = nodes.filter((node) => node !== section_id);
-			if (nodes.length)
-				uci.set(config, 'config', opt, nodes);
+		let nodes = toArray(uci.get(config, 'config', opt)),
+		    kept = nodes.filter((node) => !section_ids.includes(node));
+
+		if (kept.length !== nodes.length) {
+			if (kept.length)
+				uci.set(config, 'config', opt, kept);
 			else
 				uci.unset(config, 'config', opt);
-		} else if (nodes === section_id) {
-			uci.unset(config, 'config', opt);
 		}
 	}
+
+	uci.sections(config, 'routing_node', (res) => {
+		let nodes = toArray(res.urltest_nodes),
+		    kept = nodes.filter((node) => !section_ids.includes(node));
+
+		if (kept.length !== nodes.length) {
+			if (kept.length)
+				uci.set(config, res['.name'], 'urltest_nodes', kept);
+			else
+				uci.unset(config, res['.name'], 'urltest_nodes');
+		}
+	});
+}
+
+/* Drop subscription nodes whose subscription URL is no longer configured.
+ * Returns the number of removed nodes. */
+function cleanupInactiveSubscriptionNodes(config) {
+	let activeHashes = {},
+	    removedNodes = [];
+
+	for (let suburl of toArray(uci.get(config, 'subscription', 'subscription_url')))
+		if (suburl)
+			activeHashes[hp.calcStringMD5(suburl.replace(/#.*$/, ''))] = true;
+
+	uci.sections(config, 'node', (res) => {
+		if (res.grouphash && !activeHashes[res.grouphash]) {
+			removedNodes.push(res['.name']);
+			uci.remove(config, res['.name']);
+		}
+	});
+
+	removeNodeReferences(config, removedNodes);
+
+	return removedNodes.length;
 }
 
 function renderNodeSettings(section, data, features, main_node, routing_mode) {
@@ -741,7 +784,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode) {
 	s.modaltitle = L.bind(hp.loadModalTitle, this, _('Node'), _('Add a node'), data[0]);
 	s.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
 	s.handleRemove = function(section_id) {
-		removeNodeReferences(data[0], section_id);
+		removeNodeReferences(data[0], [ section_id ]);
 
 		return form.GridSection.prototype.handleRemove.apply(this, arguments);
 	}
@@ -1553,6 +1596,20 @@ return view.extend({
 		let subinfo = hp.loadSubscriptionInfo(data[0]);
 
 		m = new form.Map('homeproxy', _('Edit nodes'));
+		const mapSave = m.save;
+		m.save = function(cb, silent) {
+			return mapSave.call(this, function() {
+				const removed = cleanupInactiveSubscriptionNodes(data[0]);
+				if (removed > 0) {
+					delete m.homeproxyNodeGroups;
+
+					ui.addNotification(null, E('p', _('Removed %s node(s) from deleted subscriptions.').format(removed)));
+				}
+
+				if (typeof cb === 'function')
+					return cb.apply(this, arguments);
+			}, silent);
+		}
 
 		s = m.section(form.NamedSection, 'subscription', 'homeproxy');
 
@@ -1784,11 +1841,7 @@ return view.extend({
 			for (let i in subnodes)
 				uci.remove(data[0], subnodes[i]);
 
-			if (subnodes.includes(uci.get(data[0], 'config', 'main_node')))
-				uci.set(data[0], 'config', 'main_node', 'nil');
-
-			if (subnodes.includes(uci.get(data[0], 'config', 'main_udp_node')))
-				uci.set(data[0], 'config', 'main_udp_node', 'nil');
+			removeNodeReferences(data[0], subnodes);
 
 			delete this.map.homeproxyNodeGroups;
 			this.inputtitle = _('%s nodes removed').format(subnodes.length);
