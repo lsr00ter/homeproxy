@@ -9,22 +9,45 @@ set -o pipefail
 PKG_MGR="${1:-apk}"
 RELEASE_TYPE="${2:-snapshot}"
 
-export PKG_SOURCE_DATE_EPOCH="$(date "+%s")"
-export SOURCE_DATE_EPOCH="$PKG_SOURCE_DATE_EPOCH"
-
-BASE_DIR="$(cd "$(dirname $0)"; pwd)"
+BASE_DIR="$(cd "$(dirname "$0")"; pwd)"
 PKG_DIR="$BASE_DIR/.."
+
+case "$PKG_MGR" in
+	apk|ipk) ;;
+	*)
+		echo "error: package manager must be apk or ipk" >&2
+		exit 1
+		;;
+esac
+
+case "$RELEASE_TYPE" in
+	release|snapshot|push|pull_request|workflow_dispatch) ;;
+	*)
+		echo "error: unsupported release type: $RELEASE_TYPE" >&2
+		exit 1
+		;;
+esac
+
+if [ "$RELEASE_TYPE" == "release" ]; then
+	if [[ ! "${GITHUB_REF_NAME:-}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+		echo "error: release builds require GITHUB_REF_NAME matching v<major>.<minor>.<patch>" >&2
+		exit 1
+	fi
+
+	PKG_VERSION="${GITHUB_REF_NAME#v}"
+	PKG_SOURCE_DATE_EPOCH="$(git -C "$PKG_DIR" show -s --format=%ct "${GITHUB_REF_NAME}^{commit}")"
+else
+	PKG_SOURCE_DATE_EPOCH="$(date "+%s")"
+	PKG_VERSION="$PKG_SOURCE_DATE_EPOCH~$(git -C "$PKG_DIR" rev-parse --short HEAD)"
+fi
+export PKG_SOURCE_DATE_EPOCH
+export SOURCE_DATE_EPOCH="$PKG_SOURCE_DATE_EPOCH"
 
 function get_mk_value() {
 	awk -F "$1:=" '{print $2}' "$PKG_DIR/Makefile" | xargs
 }
 
 PKG_NAME="$(get_mk_value "PKG_NAME")"
-if [ "$RELEASE_TYPE" == "release" ]; then
-	PKG_VERSION="$(get_mk_value "PKG_VERSION")"
-else
-	PKG_VERSION="$PKG_SOURCE_DATE_EPOCH~$(git rev-parse --short HEAD)"
-fi
 
 TEMP_DIR="$(mktemp -d -p $BASE_DIR)"
 TEMP_PKG_DIR="$TEMP_DIR/$PKG_NAME"

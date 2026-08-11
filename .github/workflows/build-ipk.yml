@@ -38,10 +38,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout source tree
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
+          fetch-depth: 0
 
       - name: Checkout apk
         uses: actions/checkout@v6
@@ -100,27 +105,46 @@ jobs:
           echo "IPK_ASSET_NAME=$(ls *.ipk)" >> $GITHUB_ENV
           popd
 
-      - name: Publishing APK files to GitHub Artifacts
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v7
-        if: github.event_name != 'release'
         with:
-          name: ${{ env.APK_ASSET_NAME }}
+          name: homeproxy-apk
           path: .github/${{ env.APK_ASSET_NAME }}
           archive: false
+          if-no-files-found: error
 
-      - name: Publishing IPK files to GitHub Artifacts
+      - name: Upload IPK artifact
         uses: actions/upload-artifact@v7
-        if: github.event_name != 'release'
         with:
-          name: ${{ env.IPK_ASSET_NAME }}
+          name: homeproxy-ipk
           path: .github/${{ env.IPK_ASSET_NAME }}
           archive: false
+          if-no-files-found: error
 
-      - name: Publishing to GitHub Releases
+  release:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: homeproxy-apk
+          path: release-assets
+
+      - name: Download IPK artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: homeproxy-ipk
+          path: release-assets
+
+      - name: Upload release assets
         uses: svenstaro/upload-release-action@v2
-        if: github.event_name == 'release'
         with:
           repo_token: ${{ github.token }}
-          file: .github/luci-app-homeproxy_*.*
+          file: release-assets/luci-app-homeproxy_*.*
           file_glob: true
-          tag: ${{ github.ref }}
+          tag: ${{ github.event.release.tag_name }}
