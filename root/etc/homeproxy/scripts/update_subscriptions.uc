@@ -927,6 +927,13 @@ function has_subscription_nodes() {
 	return found;
 }
 
+function normalize_subscription_uri(uri) {
+	const fragment = split(uri, '#', 2);
+	fragment[0] = replace(fragment[0], / /g, '_');
+
+	return join('#', fragment);
+}
+
 function main() {
 	const active_subscription_hashes = {};
 	for (let url in to_array(subscription_urls)) {
@@ -968,7 +975,7 @@ function main() {
 				map(nodes, (_, i) => nodes[i].nodetype = 'sip008');
 		} catch(e) {
 			nodes = decodeBase64Str(res);
-			nodes = nodes ? split(trim(replace(nodes, / /g, '_')), '\n') : [];
+			nodes = nodes ? map(split(trim(nodes), '\n'), normalize_subscription_uri) : [];
 		}
 
 		let count = 0;
@@ -979,15 +986,11 @@ function main() {
 			if (isEmpty(config))
 				continue;
 
-			const label = config.label;
-			config.label = null;
-			const confHash = md5(sprintf('%J', config)),
-			      nameHash = md5(label);
-			config.label = label;
+			const nameHash = md5(config.label);
 
 			if (filter_check(config.label))
 				log(sprintf('Skipping blacklist node: %s.', config.label));
-			else if (node_cache[groupHash][confHash] || node_cache[groupHash][nameHash])
+			else if (node_cache[groupHash][nameHash])
 				log(sprintf('Skipping duplicate node: %s.', config.label));
 			else {
 				if (config.tls === '1' && allow_insecure === '1')
@@ -998,7 +1001,6 @@ function main() {
 				config.grouphash = groupHash;
 				push(node_result, []);
 				push(node_result[length(node_result)-1], config);
-				node_cache[groupHash][confHash] = config;
 				node_cache[groupHash][nameHash] = config;
 
 				count++;
