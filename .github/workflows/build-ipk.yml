@@ -110,7 +110,6 @@ jobs:
         with:
           name: homeproxy-apk
           path: .github/${{ env.APK_ASSET_NAME }}
-          archive: false
           if-no-files-found: error
 
       - name: Upload IPK artifact
@@ -118,7 +117,6 @@ jobs:
         with:
           name: homeproxy-ipk
           path: .github/${{ env.IPK_ASSET_NAME }}
-          archive: false
           if-no-files-found: error
 
   release:
