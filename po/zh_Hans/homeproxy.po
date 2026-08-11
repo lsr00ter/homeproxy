@@ -769,6 +769,18 @@ msgstr "启用 ACME"
 msgid "Enable ECH"
 msgstr "启用 ECH"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1081
+msgid "Enable ShadowTLS"
+msgstr "启用 ShadowTLS"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1082
+msgid ""
+"Enable ShadowTLS for this Shadowsocks node. UDP traffic uses the existing "
+"Multiplex or UDP over TCP controls."
+msgstr ""
+"为此 Shadowsocks 节点启用 ShadowTLS。UDP 流量使用现有的多路复用或 UDP over TCP "
+"控制项。"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:984
 #: htdocs/luci-static/resources/view/homeproxy/server.js:512
 msgid "Enable TCP Brutal"
@@ -2225,6 +2237,22 @@ msgstr "为此查询设置域名策略。"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:436
 msgid "ShadowTLS"
 msgstr "ShadowTLS"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1117
+msgid "ShadowTLS SNI"
+msgstr "ShadowTLS SNI"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1088
+msgid "ShadowTLS address"
+msgstr "ShadowTLS 地址"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1110
+msgid "ShadowTLS password"
+msgstr "ShadowTLS 密码"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1094
+msgid "ShadowTLS port"
+msgstr "ShadowTLS 端口"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:644
 msgid "ShadowTLS version"

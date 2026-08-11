@@ -360,6 +360,83 @@ function generate_outbound(node) {
 	return outbound;
 }
 
+function is_shadowtls_shadowsocks(node) {
+	if (type(node) !== 'object' || node.type !== 'shadowsocks' || node.shadowtls_enabled !== '1')
+		return false;
+
+	if (isEmpty(node.shadowtls_address) || isEmpty(node.shadowtls_port) ||
+	    !(node.shadowtls_version in ['1', '2', '3']))
+		return false;
+
+	return node.shadowtls_version === '1' || !isEmpty(node.shadowtls_password);
+}
+
+function generate_shadowtls_outbound(node, tag) {
+	if (!is_shadowtls_shadowsocks(node))
+		return null;
+
+	return {
+		type: 'shadowtls',
+		tag: tag + '-shadowtls',
+		routing_mark: strToInt(self_mark),
+		server: node.shadowtls_address,
+		server_port: strToInt(node.shadowtls_port),
+		version: strToInt(node.shadowtls_version),
+		password: (node.shadowtls_version === '1') ? null : node.shadowtls_password,
+		tls: {
+			enabled: true,
+			server_name: node.shadowtls_sni
+		},
+		tcp_fast_open: strToBool(node.tcp_fast_open),
+		tcp_multi_path: strToBool(node.tcp_multi_path),
+		udp_fragment: strToBool(node.udp_fragment)
+	};
+}
+
+function apply_dial_options(outbound, options) {
+	if (type(outbound) !== 'object' || type(options) !== 'object')
+		return;
+
+	outbound.bind_interface = options.bind_interface;
+	outbound.detour = options.detour;
+	outbound.domain_resolver = options.domain_resolver;
+}
+
+function append_node_outbound(config, node, tag, dial_options) {
+	if (type(node) !== 'object' || isEmpty(node))
+		return;
+
+	if (node.type === 'wireguard') {
+		const endpoint = generate_endpoint(node);
+		if (!endpoint)
+			return;
+
+		endpoint.tag = tag || endpoint.tag;
+		apply_dial_options(endpoint, dial_options);
+		push(config.endpoints, endpoint);
+		return;
+	}
+
+	const outbound = generate_outbound(node);
+	if (!outbound)
+		return;
+
+	outbound.tag = tag || outbound.tag;
+	const shadowtls = generate_shadowtls_outbound(node, outbound.tag);
+	if (shadowtls) {
+		outbound.detour = shadowtls.tag;
+		delete outbound.server;
+		delete outbound.server_port;
+		delete outbound.plugin;
+		delete outbound.plugin_opts;
+		apply_dial_options(shadowtls, dial_options);
+		push(config.outbounds, shadowtls);
+	} else {
+		apply_dial_options(outbound, dial_options);
+	}
+	push(config.outbounds, outbound);
+}
+
 function get_outbound(cfg) {
 	if (isEmpty(cfg))
 		return null;
@@ -703,16 +780,7 @@ if (!isEmpty(main_node)) {
 		urltest_nodes = main_urltest_nodes;
 	} else {
 		const main_node_cfg = uci.get_all(uciconfig, main_node) || {};
-		if (main_node_cfg.type === 'wireguard') {
-			push(config.endpoints, generate_endpoint(main_node_cfg));
-			config.endpoints[length(config.endpoints)-1].tag = 'main-out';
-		} else {
-			const outbound = generate_outbound(main_node_cfg);
-			if (outbound) {
-				push(config.outbounds, outbound);
-				config.outbounds[length(config.outbounds)-1].tag = 'main-out';
-			}
-		}
+		append_node_outbound(config, main_node_cfg, 'main-out');
 	}
 
 	if (main_udp_node === 'urltest') {
@@ -731,27 +799,12 @@ if (!isEmpty(main_node)) {
 		urltest_nodes = [...urltest_nodes, ...filter(main_udp_urltest_nodes, (l) => !~index(urltest_nodes, l))];
 	} else if (dedicated_udp_node) {
 		const main_udp_node_cfg = uci.get_all(uciconfig, main_udp_node) || {};
-		if (main_udp_node_cfg.type === 'wireguard') {
-			push(config.endpoints, generate_endpoint(main_udp_node_cfg));
-			config.endpoints[length(config.endpoints)-1].tag = 'main-udp-out';
-		} else {
-			const outbound = generate_outbound(main_udp_node_cfg);
-			if (outbound) {
-				push(config.outbounds, outbound);
-				config.outbounds[length(config.outbounds)-1].tag = 'main-udp-out';
-			}
-		}
+		append_node_outbound(config, main_udp_node_cfg, 'main-udp-out');
 	}
 
 	for (let i in urltest_nodes) {
 		const urltest_node = uci.get_all(uciconfig, i) || {};
-		if (urltest_node.type === 'wireguard') {
-			push(config.endpoints, generate_endpoint(urltest_node));
-			config.endpoints[length(config.endpoints)-1].tag = 'cfg-' + i + '-out';
-		} else {
-			push(config.outbounds, generate_outbound(urltest_node));
-			config.outbounds[length(config.outbounds)-1].tag = 'cfg-' + i + '-out';
-		}
+		append_node_outbound(config, urltest_node, 'cfg-' + i + '-out');
 	}
 } else if (!isEmpty(default_outbound)) {
 	let urltest_nodes = [],
@@ -775,35 +828,21 @@ if (!isEmpty(main_node)) {
 			urltest_nodes = [...urltest_nodes, ...filter(cfg.urltest_nodes, (l) => !~index(urltest_nodes, l))];
 		} else {
 			const outbound = uci.get_all(uciconfig, cfg.node) || {};
-			if (outbound.type === 'wireguard') {
-				push(config.endpoints, generate_endpoint(outbound));
-				config.endpoints[length(config.endpoints)-1].bind_interface = cfg.bind_interface;
-				config.endpoints[length(config.endpoints)-1].detour = get_outbound(cfg.outbound);
-				if (cfg.domain_resolver)
-					config.endpoints[length(config.endpoints)-1].domain_resolver = {
-						server: get_resolver(cfg.domain_resolver),
-						strategy: cfg.domain_strategy
-					};
-			} else {
-				push(config.outbounds, generate_outbound(outbound));
-				config.outbounds[length(config.outbounds)-1].bind_interface = cfg.bind_interface;
-				config.outbounds[length(config.outbounds)-1].detour = get_outbound(cfg.outbound);
-				if (cfg.domain_resolver)
-					config.outbounds[length(config.outbounds)-1].domain_resolver = {
-						server: get_resolver(cfg.domain_resolver),
-						strategy: cfg.domain_strategy
-					};
-			}
+			append_node_outbound(config, outbound, null, {
+				bind_interface: cfg.bind_interface,
+				detour: get_outbound(cfg.outbound),
+				domain_resolver: cfg.domain_resolver ? {
+					server: get_resolver(cfg.domain_resolver),
+					strategy: cfg.domain_strategy
+				} : null
+			});
 			push(routing_nodes, cfg.node);
 		}
 	});
 
 	for (let i in filter(urltest_nodes, (l) => !~index(routing_nodes, l))) {
 		const urltest_node = uci.get_all(uciconfig, i) || {};
-		if (urltest_node.type === 'wireguard')
-			push(config.endpoints, generate_endpoint(urltest_node));
-		else
-			push(config.outbounds, generate_outbound(urltest_node));
+		append_node_outbound(config, urltest_node);
 	}
 }
 

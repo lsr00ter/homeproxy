@@ -746,6 +746,16 @@ msgstr ""
 msgid "Enable ECH"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1081
+msgid "Enable ShadowTLS"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1082
+msgid ""
+"Enable ShadowTLS for this Shadowsocks node. UDP traffic uses the existing "
+"Multiplex or UDP over TCP controls."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:984
 #: htdocs/luci-static/resources/view/homeproxy/server.js:512
 msgid "Enable TCP Brutal"
@@ -2193,6 +2203,22 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:436
 msgid "ShadowTLS"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1117
+msgid "ShadowTLS SNI"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1088
+msgid "ShadowTLS address"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1110
+msgid "ShadowTLS password"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1094
+msgid "ShadowTLS port"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:644

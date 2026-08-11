@@ -299,6 +299,27 @@ const shadowsocks_stream_encrypt_methods = [
 	'rc4-md5'
 ];
 
+function validateShadowsocksPassword(method, section_id, value) {
+	if (method === 'none')
+		return true;
+
+	if (!value)
+		return _('Expecting: %s').format(_('non-empty value'));
+
+	const key_length = hp.shadowsocks_encrypt_length[method];
+	if (key_length) {
+		const base64_length = Math.ceil(key_length / 3) * 4;
+		for (const key of value.split(':')) {
+			const result = key && hp.validateBase64Key(base64_length, section_id, key);
+			if (result !== true)
+				return result || _('Expecting: %s').format(
+					_('valid base64 key with %d characters').format(base64_length));
+		}
+	}
+
+	return true;
+}
+
 function validateShadowsocksConfig(config) {
 	if (!config || !config.address || !config.port || !config.shadowsocks_encrypt_method)
 		return null;
@@ -307,13 +328,249 @@ function validateShadowsocksConfig(config) {
 	    !shadowsocks_stream_encrypt_methods.includes(config.shadowsocks_encrypt_method))
 		return null;
 
-	if (config.shadowsocks_encrypt_method !== 'none' && !config.password)
+	if (validateShadowsocksPassword(config.shadowsocks_encrypt_method, 'shadowsocks', config.password) !== true)
 		return null;
 
-	if (!config.label)
-		config.label = config.address + ':' + config.port;
+	if (config.shadowtls_enabled === '1') {
+		if (!config.shadowtls_address || !config.shadowtls_port ||
+		    !['1', '2', '3'].includes(config.shadowtls_version))
+			return null;
+
+		if (config.shadowtls_version !== '1' && !config.shadowtls_password)
+			return null;
+	}
+
+	if (!config.label) {
+		const address = config.address.replace(/^\[(.*)\]$/, '$1');
+		config.label = (address.includes(':') ? '[' + address + ']' : address) + ':' + config.port;
+	}
 
 	return config;
+}
+
+function parseShadowTLSPlugin(plugin, plugin_opts, address, port) {
+	if (!plugin || !['shadow-tls', 'shadowtls'].includes(plugin.toLowerCase()))
+		return null;
+
+	const options = {};
+	for (const option of (plugin_opts || '').split(';')) {
+		const parts = option.split('='), key = parts.shift()?.toLowerCase();
+		if (key)
+			options[key] = parts.join('=');
+	}
+
+	let version = ('version' in options) ? options.version : '1';
+	for (const value of ['1', '2', '3'])
+		if (options['v' + value] === '1')
+			version = value;
+
+	return {
+		shadowtls_enabled: '1',
+		shadowtls_address: address,
+		shadowtls_port: port,
+		shadowtls_version: version,
+		shadowtls_password: options.password || options.passwd,
+		shadowtls_sni: options.host || options.sni
+	};
+}
+
+function normalizeShadowsocksEndpoint(address, port) {
+	if (address == null || port == null)
+		return null;
+
+	address = String(address).trim().replace(/^\[(.*)\]$/, '$1');
+	port = String(port).trim();
+	if (!address || !/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)
+		return null;
+
+	try {
+		const host = address.includes(':') ? '[' + address + ']' : address;
+		const url = new URL('http://' + host + ':' + port);
+		if (!url.hostname || url.pathname !== '/' || url.search || url.hash || url.username || url.password)
+			return null;
+	} catch(e) {
+		return null;
+	}
+
+	return { address: address, port: String(Number(port)) };
+}
+
+function parseShadowsocksEndpoint(endpoint, outer_port) {
+	if (typeof endpoint !== 'string')
+		return null;
+
+	endpoint = endpoint.trim();
+	let match;
+	if (outer_port != null) {
+		match = endpoint.match(/^\[([^\]]+)\]$/);
+		if (!match && endpoint.includes(':'))
+			return null;
+		return normalizeShadowsocksEndpoint(match ? match[1] : endpoint, outer_port);
+	}
+
+	match = endpoint.match(/^\[([^\]]+)\]:(\d+)$/);
+	if (match)
+		return normalizeShadowsocksEndpoint(match[1], match[2]);
+
+	match = endpoint.match(/^([^:]+):(\d+)$/);
+	return match ? normalizeShadowsocksEndpoint(match[1], match[2]) : null;
+}
+
+function decodeShadowsocksEnvelope(value) {
+	try {
+		return hp.decodeBase64Str(decodeURIComponent(value).replace(/ /g, '+'));
+	} catch(e) {
+		return null;
+	}
+}
+
+function makeShadowsocksAuthorityConfig(credentials, endpoint) {
+	const separator = credentials.indexOf(':');
+	if (separator <= 0 || !endpoint)
+		return null;
+
+	return {
+		type: 'shadowsocks',
+		address: endpoint.address,
+		port: endpoint.port,
+		shadowsocks_encrypt_method: credentials.slice(0, separator).toLowerCase(),
+		password: credentials.slice(separator + 1)
+	};
+}
+
+function parseShadowsocksBase64Authority(authority) {
+	const separator = authority.lastIndexOf('@');
+	if (separator > 0) {
+		const credentials = decodeShadowsocksEnvelope(authority.slice(0, separator));
+		const endpoint = parseShadowsocksEndpoint(authority.slice(separator + 1));
+		if (credentials && endpoint)
+			return makeShadowsocksAuthorityConfig(credentials, endpoint);
+	}
+
+	const decoded = decodeShadowsocksEnvelope(authority);
+	if (decoded) {
+		const decoded_separator = decoded.lastIndexOf('@');
+		if (decoded_separator > 0) {
+			const endpoint = parseShadowsocksEndpoint(decoded.slice(decoded_separator + 1));
+			if (endpoint)
+				return makeShadowsocksAuthorityConfig(decoded.slice(0, decoded_separator), endpoint);
+		}
+	}
+
+	const outer = authority.match(/^(.+):(\d+)$/);
+	if (!outer)
+		return null;
+
+	const decoded_outer = decodeShadowsocksEnvelope(outer[1]);
+	const decoded_separator = decoded_outer?.lastIndexOf('@') ?? -1;
+	if (decoded_separator <= 0)
+		return null;
+
+	const endpoint = parseShadowsocksEndpoint(decoded_outer.slice(decoded_separator + 1), outer[2]);
+	return makeShadowsocksAuthorityConfig(decoded_outer.slice(0, decoded_separator), endpoint);
+}
+
+function splitShadowsocksShareLink(uri) {
+	let label = null, query = null;
+	const fragment = uri.indexOf('#');
+	if (fragment >= 0) {
+		try {
+			label = decodeURIComponent(uri.slice(fragment + 1));
+		} catch(e) {
+			label = uri.slice(fragment + 1);
+		}
+		uri = uri.slice(0, fragment);
+	}
+
+	const search = uri.indexOf('?');
+	if (search >= 0) {
+		query = uri.slice(search + 1);
+		uri = uri.slice(0, search);
+	}
+
+	return { authority: uri, query: query, label: label };
+}
+
+function parseShadowTLSQuery(params, address, port) {
+	let value = null;
+	if (params.has('shadow-tls'))
+		value = params.get('shadow-tls');
+	else if (params.has('shadowtls'))
+		value = params.get('shadowtls');
+	else
+		return undefined;
+
+	const decoded = (typeof value === 'string') ? decodeShadowsocksEnvelope(value) : null;
+	if (!decoded)
+		return null;
+
+	let options;
+	try {
+		options = JSON.parse(decoded);
+	} catch(e) {
+		return null;
+	}
+	if (!options || typeof options !== 'object' || Array.isArray(options))
+		return null;
+
+	const version = String(options.version);
+	if (!['1', '2', '3'].includes(version))
+		return null;
+	if ('password' in options && typeof options.password !== 'string')
+		return null;
+	if (version !== '1' && !options.password)
+		return null;
+	if ('host' in options && typeof options.host !== 'string')
+		return null;
+	if ('address' in options && typeof options.address !== 'string')
+		return null;
+	if ('port' in options && !['number', 'string'].includes(typeof options.port))
+		return null;
+
+	const endpoint = normalizeShadowsocksEndpoint(
+		('address' in options) ? options.address : address,
+		('port' in options) ? options.port : port
+	);
+	if (!endpoint)
+		return null;
+
+	return {
+		shadowtls_enabled: '1',
+		shadowtls_address: endpoint.address,
+		shadowtls_port: endpoint.port,
+		shadowtls_version: version,
+		shadowtls_password: options.password,
+		shadowtls_sni: options.host
+	};
+}
+
+function applyShadowsocksShareOptions(config, params) {
+	let plugin, plugin_opts;
+	if (params.has('plugin')) {
+		const plugin_info = params.get('plugin').split(';');
+		plugin = (plugin_info[0] === 'simple-obfs') ? 'obfs-local' : plugin_info[0];
+		plugin_opts = (plugin_info.length > 1) ? plugin_info.slice(1).join(';') : null;
+	}
+
+	config.shadowsocks_plugin = plugin;
+	config.shadowsocks_plugin_opts = plugin_opts;
+	const plugin_shadowtls = parseShadowTLSPlugin(plugin, plugin_opts, config.address, config.port);
+	if (plugin_shadowtls) {
+		Object.assign(config, plugin_shadowtls);
+		delete config.shadowsocks_plugin;
+		delete config.shadowsocks_plugin_opts;
+	}
+
+	const query_shadowtls = parseShadowTLSQuery(params, config.address, config.port);
+	if (query_shadowtls === null)
+		return null;
+	if (query_shadowtls) {
+		Object.assign(config, query_shadowtls);
+		delete config.shadowsocks_plugin;
+		delete config.shadowsocks_plugin_opts;
+	}
+
+	return validateShadowsocksConfig(config);
 }
 
 function parseShadowsocksLegacyUri(uri, label) {
@@ -344,63 +601,53 @@ function parseShadowsocksLegacyUri(uri, label) {
 }
 
 function parseShadowsocksShareLink(uri) {
-	let label = null, suri = uri.split('#'), slabel = '';
-	if (suri.length <= 2) {
-		if (suri.length === 2) {
-			slabel = '#' + suri[1];
-			try {
-				label = decodeURIComponent(suri[1]);
-			} catch(e) {
-				label = suri[1];
-			}
-		}
-
-		try {
-			let decoded = hp.decodeBase64Str(suri[0]);
-			if (decoded)
-				uri = decoded.trim() + slabel;
-		} catch(e) { }
+	let parts = splitShadowsocksShareLink(uri);
+	let config = parseShadowsocksBase64Authority(parts.authority);
+	if (config) {
+		config.label = parts.label;
+		return applyShadowsocksShareOptions(config, new URLSearchParams(parts.query || ''));
 	}
 
+	const decoded = decodeShadowsocksEnvelope(parts.authority);
+	if (decoded) {
+		const decoded_parts = splitShadowsocksShareLink(decoded.trim());
+		parts.authority = decoded_parts.authority;
+		parts.query = (parts.query == null) ? decoded_parts.query : parts.query;
+		parts.label = (parts.label == null) ? decoded_parts.label : parts.label;
+	}
+
+	const params = new URLSearchParams(parts.query || '');
 	try {
 		/* SIP002 format https://shadowsocks.org/guide/sip002.html */
-		let url = new URL('http://' + uri),
-		    userinfo, plugin, plugin_opts;
-
-		label = url.hash ? decodeURIComponent(url.hash.slice(1)) : label;
+		const url = new URL('http://' + parts.authority);
+		let userinfo;
 		if (url.username && url.password) {
 			/* User info encoded with URIComponent */
 			userinfo = [decodeURIComponent(url.username), decodeURIComponent(url.password)];
 		} else if (url.username) {
 			/* User info encoded with base64 */
-			userinfo = hp.decodeBase64Str(decodeURIComponent(url.username)).split(':');
-			if (userinfo.length > 1)
-				userinfo = [userinfo[0], userinfo.slice(1).join(':')];
+			const decoded_userinfo = decodeShadowsocksEnvelope(url.username);
+			const separator = decoded_userinfo?.indexOf(':') ?? -1;
+			if (separator > 0)
+				userinfo = [decoded_userinfo.slice(0, separator), decoded_userinfo.slice(separator + 1)];
 		}
 
-		if (url.search && url.searchParams.get('plugin')) {
-			let plugin_info = url.searchParams.get('plugin').split(';');
-			plugin = (plugin_info[0] === 'simple-obfs') ? 'obfs-local' : plugin_info[0];
-			plugin_opts = (plugin_info.length > 1) ? plugin_info.slice(1).join(';') : null;
+		if (userinfo) {
+			config = {
+				label: parts.label,
+				type: 'shadowsocks',
+				address: url.hostname,
+				port: url.port || '80',
+				shadowsocks_encrypt_method: userinfo[0].toLowerCase(),
+				password: userinfo[1]
+			};
+			return applyShadowsocksShareOptions(config, params);
 		}
-
-		let config = validateShadowsocksConfig({
-			label: label,
-			type: 'shadowsocks',
-			address: url.hostname,
-			port: url.port || '80',
-			shadowsocks_encrypt_method: userinfo?.[0],
-			password: userinfo?.[1],
-			shadowsocks_plugin: plugin,
-			shadowsocks_plugin_opts: plugin_opts
-		});
-
-		if (config)
-			return config;
 	} catch(e) { }
 
 	/* Legacy format https://github.com/shadowsocks/shadowsocks-org/commit/78ca46cd6859a4e9475953ed34a2d301454f579e */
-	return parseShadowsocksLegacyUri(uri.split('#')[0], label);
+	config = parseShadowsocksLegacyUri(parts.authority, parts.label);
+	return config ? applyShadowsocksShareOptions(config, params) : null;
 }
 
 function parseShareLink(uri, features) {
@@ -868,18 +1115,20 @@ function renderNodeSettings(section, data, features, main_node, routing_mode) {
 	o.depends({'type': 'socks', 'socks_version': '5'});
 	o.validate = function(section_id, value) {
 		if (section_id) {
-			let type = this.section.formvalue(section_id, 'type');
-			let required_type = [ 'anytls', 'shadowsocks', 'shadowtls', 'trojan' ];
-
-			if (required_type.includes(type)) {
-				if (type === 'shadowsocks') {
-					let encmode = this.section.formvalue(section_id, 'shadowsocks_encrypt_method');
-					if (encmode === 'none')
-						return true;
-				}
-				if (!value)
-					return _('Expecting: %s').format(_('non-empty value'));
+			const type = this.section.formvalue(section_id, 'type');
+			if (type === 'shadowsocks') {
+				const method = this.section.formvalue(section_id, 'shadowsocks_encrypt_method');
+				return validateShadowsocksPassword(method, section_id, value);
 			}
+
+			if (type === 'shadowtls') {
+				const version = this.section.formvalue(section_id, 'shadowtls_version');
+				if (version === '1')
+					return true;
+			}
+
+			if (['anytls', 'shadowtls', 'trojan'].includes(type) && !value)
+				return _('Expecting: %s').format(_('non-empty value'));
 		}
 
 		return true;
@@ -1020,28 +1269,66 @@ function renderNodeSettings(section, data, features, main_node, routing_mode) {
 	o.rmempty = false;
 	o.modalonly = true;
 
-	o = s.option(form.ListValue, 'shadowsocks_plugin', _('Plugin'));
-	o.value('', _('none'));
-	o.value('obfs-local');
-	o.value('v2ray-plugin');
+	o = s.option(form.Flag, 'shadowtls_enabled', _('Enable ShadowTLS'),
+		_('Enable ShadowTLS for this Shadowsocks node. UDP traffic uses the existing ' +
+			'Multiplex or UDP over TCP controls.'));
+	o.default = o.disabled;
 	o.depends('type', 'shadowsocks');
 	o.modalonly = true;
 
-	o = s.option(form.Value, 'shadowsocks_plugin_opts', _('Plugin opts'));
-	o.depends('shadowsocks_plugin', 'obfs-local');
-	o.depends('shadowsocks_plugin', 'v2ray-plugin');
+	o = s.option(form.Value, 'shadowtls_address', _('ShadowTLS address'));
+	o.datatype = 'host';
+	o.depends({'type': 'shadowsocks', 'shadowtls_enabled': '1'});
+	o.rmempty = false;
 	o.modalonly = true;
-	/* Shadowsocks config end */
 
-	/* ShadowTLS config */
+	o = s.option(form.Value, 'shadowtls_port', _('ShadowTLS port'));
+	o.datatype = 'port';
+	o.depends({'type': 'shadowsocks', 'shadowtls_enabled': '1'});
+	o.rmempty = false;
+	o.modalonly = true;
+
 	o = s.option(form.ListValue, 'shadowtls_version', _('ShadowTLS version'));
 	o.value('1', _('v1'));
 	o.value('2', _('v2'));
 	o.value('3', _('v3'));
 	o.default = '1';
 	o.depends('type', 'shadowtls');
+	o.depends({'type': 'shadowsocks', 'shadowtls_enabled': '1'});
 	o.rmempty = false;
 	o.modalonly = true;
+
+	o = s.option(form.Value, 'shadowtls_password', _('ShadowTLS password'));
+	o.password = true;
+	o.depends({'type': 'shadowsocks', 'shadowtls_enabled': '1', 'shadowtls_version': '2'});
+	o.depends({'type': 'shadowsocks', 'shadowtls_enabled': '1', 'shadowtls_version': '3'});
+	o.rmempty = false;
+	o.modalonly = true;
+
+	o = s.option(form.Value, 'shadowtls_sni', _('ShadowTLS SNI'));
+	o.depends({'type': 'shadowsocks', 'shadowtls_enabled': '1'});
+	o.modalonly = true;
+
+	o = s.option(form.ListValue, 'shadowsocks_plugin', _('Plugin'));
+	o.value('', _('none'));
+	o.value('obfs-local');
+	o.value('v2ray-plugin');
+	o.depends({'type': 'shadowsocks', 'shadowtls_enabled': '0'});
+	o.modalonly = true;
+
+	o = s.option(form.Value, 'shadowsocks_plugin_opts', _('Plugin opts'));
+	o.depends({
+		'type': 'shadowsocks',
+		'shadowtls_enabled': '0',
+		'shadowsocks_plugin': 'obfs-local'
+	});
+	o.depends({
+		'type': 'shadowsocks',
+		'shadowtls_enabled': '0',
+		'shadowsocks_plugin': 'v2ray-plugin'
+	});
+	o.modalonly = true;
+	/* Shadowsocks config end */
 
 	/* Socks config */
 	o = s.option(form.ListValue, 'socks_version', _('Socks version'));
