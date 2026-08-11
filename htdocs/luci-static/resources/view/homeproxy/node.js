@@ -1034,9 +1034,12 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, su
 	s.sortable = true;
 	s.nodescriptions = true;
 	s.modaltitle = function(section_id) {
-		const label = formatSectionLabel(section_id);
+		if (!uci.get(data[0], section_id, 'type'))
+			return _('Add a node');
 
-		return label ? _('Node') + ' ' + String.fromCharCode(187) + ' ' + label : _('Add a node');
+		const label = formatSectionLabel(section_id, hp.loadDefaultLabel(data[0], section_id));
+
+		return _('Node') + ' ' + String.fromCharCode(187) + ' ' + label;
 	};
 	s.sectiontitle = function(section_id) {
 		const label = hp.loadDefaultLabel(data[0], section_id);
