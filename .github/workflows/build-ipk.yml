@@ -101,22 +101,20 @@ jobs:
           pushd .github
           fakeroot bash build-ipk.sh apk "${{ github.event_name }}"
           fakeroot bash build-ipk.sh ipk "${{ github.event_name }}"
-          echo "APK_ASSET_NAME=$(ls *.apk)" >> $GITHUB_ENV
-          echo "IPK_ASSET_NAME=$(ls *.ipk)" >> $GITHUB_ENV
           popd
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
           name: homeproxy-apk
-          path: .github/${{ env.APK_ASSET_NAME }}
+          path: .github/luci-app-homeproxy_*.apk
           if-no-files-found: error
 
       - name: Upload IPK artifact
         uses: actions/upload-artifact@v7
         with:
           name: homeproxy-ipk
-          path: .github/${{ env.IPK_ASSET_NAME }}
+          path: .github/luci-app-homeproxy_*.ipk
           if-no-files-found: error
 
   release:
