@@ -94,10 +94,9 @@ return view.extend({
 			let nodeaddr = ((res.type === 'direct') ? res.override_address : res.address) || '',
 			    nodeport = ((res.type === 'direct') ? res.override_port : res.port) || '';
 
-			let label = res.label || ((stubValidator.apply('ip6addr', nodeaddr) ?
-				String.format('[%s]', nodeaddr) : nodeaddr) + ':' + nodeport);
-			if (res.grouphash && subinfo[res.grouphash])
-				label = '%s / %s'.format(label, subinfo[res.grouphash]);
+			const label = hp.formatNodeLabel(res, subinfo,
+				((stubValidator.apply('ip6addr', nodeaddr) ?
+					String.format('[%s]', nodeaddr) : nodeaddr) + ':' + nodeport));
 
 			proxy_nodes[res['.name']] = String.format('[%s] %s', res.type, label);
 		});

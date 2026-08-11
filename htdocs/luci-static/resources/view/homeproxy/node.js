@@ -1023,13 +1023,29 @@ function cleanupInactiveSubscriptionNodes(config) {
 	return removedNodes.length;
 }
 
-function renderNodeSettings(section, data, features, main_node, routing_mode) {
+function renderNodeSettings(section, data, features, main_node, routing_mode, subinfo) {
 	let s = section, o;
+	const formatSectionLabel = (section_id, fallback) => hp.formatNodeLabel({
+		label: uci.get(data[0], section_id, 'label'),
+		grouphash: uci.get(data[0], section_id, 'grouphash')
+	}, subinfo, fallback);
+
 	s.rowcolors = true;
 	s.sortable = true;
 	s.nodescriptions = true;
-	s.modaltitle = L.bind(hp.loadModalTitle, this, _('Node'), _('Add a node'), data[0]);
-	s.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
+	s.modaltitle = function(section_id) {
+		if (!uci.get(data[0], section_id, 'type'))
+			return _('Add a node');
+
+		const label = formatSectionLabel(section_id, hp.loadDefaultLabel(data[0], section_id));
+
+		return _('Node') + ' ' + String.fromCharCode(187) + ' ' + label;
+	};
+	s.sectiontitle = function(section_id) {
+		const label = hp.loadDefaultLabel(data[0], section_id);
+
+		return formatSectionLabel(section_id, label);
+	};
 	s.handleRemove = function(section_id) {
 		removeNodeReferences(data[0], [ section_id ]);
 
@@ -1904,7 +1920,7 @@ return view.extend({
 		/* User nodes start */
 		s.tab('node', _('Nodes'));
 		o = s.taboption('node', form.SectionValue, '_node', CBIPagedGridSection, 'node');
-		ss = renderNodeSettings(o.subsection, data, features, main_node, routing_mode);
+		ss = renderNodeSettings(o.subsection, data, features, main_node, routing_mode, subinfo);
 		ss.addremove = true;
 		setupPagedNodeSection(ss, m, data[0], subinfo, (groups) => groups.user);
 		/* Import subscription links start */
@@ -2004,7 +2020,7 @@ return view.extend({
 		if (Object.keys(subinfo).length > 0) {
 			s.tab('sub_node', _('Subscription nodes'));
 			o = s.taboption('sub_node', form.SectionValue, '_sub_node', CBIPagedGridSection, 'node');
-			ss = renderNodeSettings(o.subsection, data, features, main_node, routing_mode);
+			ss = renderNodeSettings(o.subsection, data, features, main_node, routing_mode, subinfo);
 			setupGroupedNodeSection(ss, m, data[0], subinfo);
 		}
 		/* Subscription nodes end */
