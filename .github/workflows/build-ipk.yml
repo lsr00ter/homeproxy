@@ -109,6 +109,7 @@ jobs:
           name: homeproxy-apk
           path: .github/luci-app-homeproxy_*.apk
           if-no-files-found: error
+          include-hidden-files: true
 
       - name: Upload IPK artifact
         uses: actions/upload-artifact@v7
@@ -116,6 +117,7 @@ jobs:
           name: homeproxy-ipk
           path: .github/luci-app-homeproxy_*.ipk
           if-no-files-found: error
+          include-hidden-files: true
 
   release:
     if: github.event_name == 'release'
