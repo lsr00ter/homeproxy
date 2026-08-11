@@ -2012,6 +2012,10 @@ msgstr ""
 msgid "Remove all nodes from subscriptions"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1606
+msgid "Removed %s node(s) from deleted subscriptions."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1203
 msgid "Reply with REFUSED"
 msgstr ""

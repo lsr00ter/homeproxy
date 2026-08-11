@@ -28,6 +28,7 @@ uci.load(uciconfig);
 
 const ucimain = 'config',
       ucinode = 'node',
+      uciroutingnode = 'routing_node',
       ucisubscription = 'subscription';
 
 const allow_insecure = uci.get(uciconfig, ucisubscription, 'allow_insecure') || '0',
@@ -47,6 +48,35 @@ if (routing_mode !== 'custom') {
 /* UCI config end */
 
 /* String helper start */
+function to_array(value) {
+	if (isEmpty(value))
+		return [];
+
+	return (type(value) === 'array') ? value : [ value ];
+}
+
+/* Drop urltest references whose node section no longer exists */
+function prune_urltest_nodes(section, option) {
+	const nodes = to_array(uci.get(uciconfig, section, option)),
+	      kept = filter(nodes, (node) => {
+		if (uci.get(uciconfig, node))
+			return true;
+
+		log(sprintf('Node %s is gone, removing from urltest list.', node));
+		return false;
+	      });
+
+	if (length(kept) === length(nodes))
+		return false;
+
+	if (length(kept))
+		uci.set(uciconfig, section, option, kept);
+	else
+		uci.delete(uciconfig, section, option);
+
+	return true;
+}
+
 function filter_check(name) {
 	if (isEmpty(name) || filter_mode === 'disabled' || isEmpty(filter_keywords))
 		return false;
@@ -63,6 +93,33 @@ function filter_check(name) {
 	return ret;
 }
 /* String helper end */
+
+function remove_node_references(removed_nodes) {
+	let changed = false;
+	const selected_node = uci.get(uciconfig, ucimain, 'main_node'),
+	      selected_udp_node = uci.get(uciconfig, ucimain, 'main_udp_node');
+
+	if (selected_node && selected_node in removed_nodes) {
+		uci.set(uciconfig, ucimain, 'main_node', 'nil');
+		main_node = 'nil';
+		changed = true;
+	}
+
+	if (selected_udp_node && selected_udp_node in removed_nodes) {
+		uci.set(uciconfig, ucimain, 'main_udp_node', 'nil');
+		main_udp_node = 'nil';
+		changed = true;
+	}
+
+	changed = prune_urltest_nodes(ucimain, 'main_urltest_nodes') || changed;
+	changed = prune_urltest_nodes(ucimain, 'main_udp_urltest_nodes') || changed;
+
+	uci.foreach(uciconfig, uciroutingnode, (cfg) => {
+		changed = prune_urltest_nodes(cfg['.name'], 'urltest_nodes') || changed;
+	});
+
+	return changed;
+}
 
 /* Common var start */
 const node_cache = {},
@@ -568,14 +625,40 @@ function parse_uri(uri) {
 	return config;
 }
 
+function has_subscription_nodes() {
+	let found = false;
+
+	uci.foreach(uciconfig, ucinode, (cfg) => {
+		if (cfg.grouphash)
+			found = true;
+	});
+
+	return found;
+}
+
 function main() {
+	const active_subscription_hashes = {};
+	for (let url in to_array(subscription_urls)) {
+		url = replace(url, /#.*$/, '');
+		if (!isEmpty(url))
+			active_subscription_hashes[md5(url)] = true;
+	}
+
+	if (isEmpty(active_subscription_hashes) && !has_subscription_nodes()) {
+		log('No subscription available.');
+		return false;
+	}
+
 	if (via_proxy !== '1') {
 		log('Stopping service...');
 		init_action('homeproxy', 'stop');
 	}
 
-	for (let url in subscription_urls) {
+	for (let url in to_array(subscription_urls)) {
 		url = replace(url, /#.*$/, '');
+		if (isEmpty(url))
+			continue;
+
 		const groupHash = md5(url);
 		node_cache[groupHash] = {};
 
@@ -637,22 +720,21 @@ function main() {
 			log(sprintf('Successfully fetched %s nodes of total %s from %s.', count, length(nodes), url));
 	}
 
-	if (isEmpty(node_result)) {
-		log('Failed to update subscriptions: no valid node found.');
-
-		if (via_proxy !== '1') {
-			log('Starting service...');
-			init_action('homeproxy', 'start');
-		}
-
-		return false;
-	}
-
 	let added = 0, removed = 0;
+	const removed_nodes = {};
 	uci.foreach(uciconfig, ucinode, (cfg) => {
 		/* Nodes created by the user */
 		if (!cfg.grouphash)
 			return null;
+
+		if (!(cfg.grouphash in active_subscription_hashes)) {
+			uci.delete(uciconfig, cfg['.name']);
+			removed_nodes[cfg['.name']] = true;
+			removed++;
+
+			log(sprintf('Removing node from deleted subscription: %s.', cfg.label || cfg['name']));
+			return null;
+		}
 
 		/* Empty object - failed to fetch nodes */
 		if (length(node_cache[cfg.grouphash]) === 0)
@@ -660,6 +742,7 @@ function main() {
 
 		if (!node_cache[cfg.grouphash] || !node_cache[cfg.grouphash][cfg['.name']]) {
 			uci.delete(uciconfig, cfg['.name']);
+			removed_nodes[cfg['.name']] = true;
 			removed++;
 
 			log(sprintf('Removing node: %s.', cfg.label || cfg['name']));
@@ -685,22 +768,28 @@ function main() {
 			added++;
 			log(sprintf('Adding node: %s.', node.label));
 		});
+	const references_changed = remove_node_references(removed_nodes);
+
+	if (isEmpty(node_result) && removed === 0) {
+		log('Failed to update subscriptions: no valid node found.');
+
+		if (via_proxy !== '1') {
+			log('Starting service...');
+			init_action('homeproxy', 'start');
+		}
+
+		return false;
+	}
+
 	uci.commit(uciconfig);
 
-	let need_restart = (via_proxy !== '1');
+	let need_restart = (via_proxy !== '1' || references_changed);
 	if (!isEmpty(main_node)) {
 		const first_server = uci.get_first(uciconfig, ucinode);
 		if (first_server) {
 			let main_urltest_nodes;
-			if (main_node === 'urltest') {
-				main_urltest_nodes = filter(uci.get(uciconfig, ucimain, 'main_urltest_nodes'), (v) => {
-					if (!uci.get(uciconfig, v)) {
-						log(sprintf('Node %s is gone, removing from urltest list.', v));
-						return false;
-					}
-					return true;
-				});
-			}
+			if (main_node === 'urltest')
+				main_urltest_nodes = to_array(uci.get(uciconfig, ucimain, 'main_urltest_nodes'));
 
 			if ((main_node === 'urltest') ? !length(main_urltest_nodes) : !uci.get(uciconfig, main_node)) {
 				uci.set(uciconfig, ucimain, 'main_node', first_server);
@@ -712,15 +801,8 @@ function main() {
 
 			if (!isEmpty(main_udp_node) && main_udp_node !== 'same') {
 				let main_udp_urltest_nodes;
-				if (main_udp_node === 'urltest') {
-					main_udp_urltest_nodes = filter(uci.get(uciconfig, ucimain, 'main_udp_urltest_nodes'), (v) => {
-						if (!uci.get(uciconfig, v)) {
-							log(sprintf('Node %s is gone, removing from urltest list.', v));
-							return false;
-						}
-						return true;
-					});
-				}
+				if (main_udp_node === 'urltest')
+					main_udp_urltest_nodes = to_array(uci.get(uciconfig, ucimain, 'main_udp_urltest_nodes'));
 
 				if ((main_udp_node === 'urltest') ? !length(main_udp_urltest_nodes) : !uci.get(uciconfig, main_udp_node)) {
 					uci.set(uciconfig, ucimain, 'main_udp_node', first_server);
@@ -750,15 +832,14 @@ function main() {
 	log('Successfully updated subscriptions.');
 }
 
-if (!isEmpty(subscription_urls))
-	try {
-		call(main);
-	} catch(e) {
-		log('[FATAL ERROR] An error occurred during updating subscriptions:');
-		log(sprintf('%s: %s', e.type, e.message));
-		log(e.stacktrace[0].context);
+try {
+	call(main);
+} catch(e) {
+	log('[FATAL ERROR] An error occurred during updating subscriptions:');
+	log(sprintf('%s: %s', e.type, e.message));
+	log(e.stacktrace[0].context);
 
-		log('Restarting service...');
-		init_action('homeproxy', 'stop');
-		init_action('homeproxy', 'start');
-	}
+	log('Restarting service...');
+	init_action('homeproxy', 'stop');
+	init_action('homeproxy', 'start');
+}
