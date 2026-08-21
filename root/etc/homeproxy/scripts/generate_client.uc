@@ -566,7 +566,7 @@ if (!isEmpty(main_node)) {
 			tag: 'china-dns',
 			domain_resolver: {
 				server: 'default-dns',
-				strategy: 'prefer_ipv6'
+				strategy: (ipv6_support !== '1') ? 'ipv4_only' : 'prefer_ipv6'
 			},
 			detour: self_mark ? 'direct-out' : null,
 			...parse_dnsserver(china_dns_server)
@@ -583,7 +583,7 @@ if (!isEmpty(main_node)) {
 			rule_set: 'geosite-cn',
 			action: 'route',
 			server: 'china-dns',
-			strategy: 'prefer_ipv6'
+			strategy: (ipv6_support !== '1') ? 'ipv4_only' : 'prefer_ipv6'
 		});
 		push(config.dns.rules, {
 			type: 'logical',
@@ -599,7 +599,7 @@ if (!isEmpty(main_node)) {
 			],
 			action: 'route',
 			server: 'china-dns',
-			strategy: 'prefer_ipv6'
+			strategy: (ipv6_support !== '1') ? 'ipv4_only' : 'prefer_ipv6'
 		});
 	}
 } else if (!isEmpty(default_outbound)) {
